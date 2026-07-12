@@ -83,6 +83,10 @@ button{cursor:pointer;font-family:inherit}
 .bar>span{display:block;height:100%;background:linear-gradient(90deg,var(--indigo),var(--teal));border-radius:999px}
 .bar.warn>span{background:linear-gradient(90deg,#e5a13a,#e5544b)}
 .mgr-card{background:var(--card);border-radius:14px;box-shadow:var(--shadow);padding:13px;margin-bottom:10px}
+.mgr-head{display:flex;align-items:center;gap:12px}
+.mgr-ring{flex:none;line-height:0}
+.gauge-legend{display:flex;justify-content:center;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:2px}
+.gauge-legend b{font-size:15px;line-height:1}
 .mgr-card .top{display:flex;justify-content:space-between;align-items:center}
 .mgr-card .nm{font-weight:800;font-size:15px}
 .mini{display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;margin-top:10px;font-size:12.5px}
@@ -171,8 +175,7 @@ const LS_KEY = "salesapp_v1";
 function defaultData(){
   return {
     config:{
-      pinAdmin:"1111",
-      pinRop:"2222",
+      pinAdmin:"1111",   // PIN «Руководителя» (меняется в настройках)
       managers:[
         {id:"m1",name:"Менеджер 1"},
         {id:"m2",name:"Менеджер 2"},
@@ -182,7 +185,7 @@ function defaultData(){
     },
     plans:{},              // { managerId:{monthPlan} }
     entries:[],            // записи по дням
-    help:[],               // обращения "нужна помощь РОПа"
+    help:[],               // обращения "нужна помощь руководителя"
     daysOff:{}             // { managerId:['YYYY-MM-DD',...] }
   };
 }
@@ -203,7 +206,9 @@ let DB = load();
 
 /* сессия (роль) хранится отдельно */
 const SESS_KEY = "salesapp_v1_session";
-let SESSION = JSON.parse(localStorage.getItem(SESS_KEY)||"null"); // {role:'admin'|'rop'|'manager', managerId?}
+let SESSION = JSON.parse(localStorage.getItem(SESS_KEY)||"null"); // {role:'boss'|'manager', managerId?}
+// миграция старых ролей: Админ и РОП -> единый «Руководитель» (boss)
+if(SESSION && (SESSION.role==="admin"||SESSION.role==="rop")){ SESSION={role:"boss"}; localStorage.setItem(SESS_KEY, JSON.stringify(SESSION)); }
 function setSession(s){ SESSION=s; localStorage.setItem(SESS_KEY, JSON.stringify(s)); }
 function clearSession(){ SESSION=null; localStorage.removeItem(SESS_KEY); }
 
@@ -326,6 +331,90 @@ function workingDaysStats(managerId){
 }
 
 /* ============================================================
+   ВИЗУАЛИЗАЦИИ (инлайновый SVG, без библиотек)
+   ============================================================ */
+function clampNum(v,a,b){ return Math.max(a, Math.min(b, v)); }
+// цвет по зоне выполнения плана (status-цвета)
+function zoneColor(p){ if(p<50) return "#e5544b"; if(p<90) return "#e5a13a"; return "#12b3a6"; }
+
+// Спидометр 0–150%: стрелка = «сейчас», синяя метка = «прогноз»
+function speedoSVG(curPct, forePct, opts){
+  opts=opts||{};
+  const W=240, H=176, cx=120, cy=120, R=100, thick=20, rMid=R-thick/2;
+  const a=v=>Math.PI*(1-clampNum(v,0,150)/150);       // 0%→π (лево), 150%→0 (право)
+  const pt=(v,r)=>{ const t=a(v); return [cx+r*Math.cos(t), cy-r*Math.sin(t)]; };
+  const arc=(v1,v2,r,color)=>{ const [x1,y1]=pt(v1,r), [x2,y2]=pt(v2,r);
+    return `<path d="M${x1.toFixed(1)} ${y1.toFixed(1)} A ${r} ${r} 0 0 0 ${x2.toFixed(1)} ${y2.toFixed(1)}" fill="none" stroke="${color}" stroke-width="${thick}"/>`; };
+  let s=`<svg viewBox="0 0 ${W} ${H}" width="100%" style="max-width:300px;display:block;margin:0 auto" role="img" aria-label="Выполнение плана ${Math.round(curPct)}%">`;
+  // цветные зоны: красная 0–50, жёлтая 50–90, зелёная 90–150
+  s+=arc(0,50,rMid,"#e5544b")+arc(50,90,rMid,"#e5a13a")+arc(90,150,rMid,"#12b3a6");
+  // засечки и подписи 0/50/100/150
+  [0,50,100,150].forEach(v=>{
+    const [x1,y1]=pt(v,R+1), [x2,y2]=pt(v,R-thick-1), [lx,ly]=pt(v,R+15);
+    s+=`<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="#fff" stroke-width="2"/>`;
+    s+=`<text x="${lx.toFixed(1)}" y="${(ly+3).toFixed(1)}" text-anchor="middle" font-size="10" fill="#75809a">${v}</text>`;
+  });
+  // метка прогноза (синяя чёрточка поперёк шкалы)
+  const [fx1,fy1]=pt(forePct,R+3), [fx2,fy2]=pt(forePct,R-thick-3);
+  s+=`<line x1="${fx1.toFixed(1)}" y1="${fy1.toFixed(1)}" x2="${fx2.toFixed(1)}" y2="${fy2.toFixed(1)}" stroke="#4451d6" stroke-width="4" stroke-linecap="round"/>`;
+  // стрелка «сейчас»
+  const [nx,ny]=pt(curPct,R-thick-6);
+  s+=`<line x1="${cx}" y1="${cy}" x2="${nx.toFixed(1)}" y2="${ny.toFixed(1)}" stroke="#1e2430" stroke-width="4" stroke-linecap="round"/>`;
+  s+=`<circle cx="${cx}" cy="${cy}" r="8" fill="#1e2430"/>`;
+  // большое число выполнения
+  s+=`<text x="${cx}" y="${H-8}" text-anchor="middle" font-size="34" font-weight="800" fill="${zoneColor(curPct)}">${Math.round(curPct)}%</text>`;
+  s+=`</svg>`;
+  return s;
+}
+
+// Компактное кольцо выполнения (для карточки менеджера на дашборде)
+function ringSVG(pct){
+  const size=60, sw=8, r=(size-sw)/2, c=2*Math.PI*r, cxy=size/2;
+  const frac=clampNum(pct,0,150)/150, off=c*(1-frac), col=zoneColor(pct);
+  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" role="img" aria-label="${Math.round(pct)}% плана">
+    <circle cx="${cxy}" cy="${cxy}" r="${r}" fill="none" stroke="#eceff7" stroke-width="${sw}"/>
+    <circle cx="${cxy}" cy="${cxy}" r="${r}" fill="none" stroke="${col}" stroke-width="${sw}" stroke-linecap="round"
+      stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}" transform="rotate(-90 ${cxy} ${cxy})"/>
+    <text x="${cxy}" y="${cxy+4}" text-anchor="middle" font-size="14" font-weight="800" fill="#1e2430">${Math.round(pct)}%</text>
+  </svg>`;
+}
+
+// Дневной столбчатый график продаж за текущий месяц (стек: Пациенты / Врачи)
+function monthBarSVG(mid){
+  const now=new Date(), y=now.getFullYear(), mo=now.getMonth();
+  const dim=new Date(y,mo+1,0).getDate();
+  const patArr=[], docArr=[]; let max=0, any=false;
+  for(let day=1;day<=dim;day++){
+    const ds=ymd(new Date(y,mo,day));
+    let pat=0, doc=0;
+    DB.entries.filter(e=>e.managerId===mid && e.date===ds).forEach(e=> (e.sales||[]).forEach(x=>{
+      const amt=(x.isReturn?-1:1)*(Number(x.amount)||0);
+      if(x.category==="doctors") doc+=amt; else pat+=amt;
+    }));
+    pat=Math.max(0,pat); doc=Math.max(0,doc);
+    patArr.push(pat); docArr.push(doc);
+    const t=pat+doc; if(t>0) any=true; if(t>max) max=t;
+  }
+  if(!any) return `<div class="empty-state">нет данных за месяц</div>`;
+  const padL=8, padR=8, padT=16, padB=18, rowH=140, plotH=rowH-padT-padB;
+  const W=Math.max(288, dim*11 + padL+padR), plotW=W-padL-padR;
+  const colW=plotW/dim, bw=Math.min(14, colW*0.72);
+  let bars="";
+  for(let i=0;i<dim;i++){
+    const x=padL + i*colW + (colW-bw)/2;
+    const ph=patArr[i]/max*plotH, dh=docArr[i]/max*plotH;
+    const yPat=padT+plotH-ph, yDoc=yPat-dh-(ph>0&&dh>0?2:0); // 2px зазор между сегментами
+    if(ph>0) bars+=`<rect x="${x.toFixed(1)}" y="${yPat.toFixed(1)}" width="${bw.toFixed(1)}" height="${ph.toFixed(1)}" rx="2" fill="#5b6ef5"/>`;
+    if(dh>0) bars+=`<rect x="${x.toFixed(1)}" y="${yDoc.toFixed(1)}" width="${bw.toFixed(1)}" height="${dh.toFixed(1)}" rx="2" fill="#12b3a6"/>`;
+    if((i+1)%5===0) bars+=`<text x="${(x+bw/2).toFixed(1)}" y="${rowH-5}" text-anchor="middle" font-size="9" fill="#75809a">${i+1}</text>`;
+  }
+  bars+=`<line x1="${padL}" y1="${padT+plotH}" x2="${W-padR}" y2="${padT+plotH}" stroke="#e5e9f2"/>`;
+  bars+=`<text x="${padL}" y="${padT-4}" font-size="9.5" fill="#75809a">макс за день: ${fmtMoney(max)}</text>`;
+  return `<div style="overflow-x:auto;margin-top:4px"><svg width="${W}" height="${rowH}" viewBox="0 0 ${W} ${rowH}" style="min-width:100%">${bars}</svg></div>
+    <div class="legend"><span><i style="background:#5b6ef5"></i>Пациенты</span><span><i style="background:#12b3a6"></i>Врачи</span></div>`;
+}
+
+/* ============================================================
    РЕНДЕР — маршрутизация
    ============================================================ */
 let ROUTE = null;
@@ -354,17 +443,15 @@ function render(){
   window.scrollTo(0,0);
 }
 function whoLabel(){
-  if(SESSION.role==="admin") return "Админ (владелец)";
-  if(SESSION.role==="rop") return "РОП — руководитель отдела";
+  if(SESSION.role==="boss") return "Руководитель";
   return "Менеджер · "+managerName(SESSION.managerId);
 }
-function isBoss(){ return SESSION.role==="admin"||SESSION.role==="rop"; }
+function isBoss(){ return SESSION.role==="boss"; }
 function defaultRoute(){ return isBoss()? "dashboard" : "cabinet"; }
 
 function renderTabs(){
   const tabs = isBoss()
-    ? [["dashboard","📊","Дашборд"],["plans","🎯","Планы"],["history","🗂","История"],
-       ...(SESSION.role==="admin"? [["settings","⚙️","Настройки"]] : [])]
+    ? [["dashboard","📊","Дашборд"],["plans","🎯","Планы"],["calendar","📅","Календарь"],["history","🗂","История"],["settings","⚙️","Настройки"]]
     : [["cabinet","🏠","Кабинет"],["entry","✍️","Ввод"],["calendar","📅","Календарь"],["history","🗂","История"]];
   const bar=document.getElementById("tabbar");
   bar.innerHTML="";
@@ -388,8 +475,7 @@ function renderGate(){
     <div class="gate">
       <div class="big">Отдел продаж</div>
       <div class="who">Кто вы?</div>
-      <button class="role-btn" onclick="pickRole('admin')"><span class="emo">👑</span>Админ<span class="arw">›</span></button>
-      <button class="role-btn" onclick="pickRole('rop')"><span class="emo">🧭</span>РОП<span class="arw">›</span></button>
+      <button class="role-btn" onclick="pickRole('boss')"><span class="emo">👑</span>Руководитель<span class="arw">›</span></button>
       <button class="role-btn" onclick="pickRole('manager')"><span class="emo">📞</span>Менеджер<span class="arw">›</span></button>
       <div class="small-note">Данные хранятся на этом устройстве (localStorage).<br>Общая база и синхронизация с Сипуни — на следующем этапе.</div>
     </div>`;
@@ -402,14 +488,13 @@ function pickRole(role){
       <button class="btn ghost" onclick="render()">← Назад</button></div>`;
     return;
   }
-  const need = role==="admin"? DB.config.pinAdmin : DB.config.pinRop;
-  const title = role==="admin"? "Админ":"РОП";
-  v.innerHTML=`<div class="gate"><div class="big">${title}</div><div class="who">Введите PIN</div>
+  const need = DB.config.pinAdmin;
+  v.innerHTML=`<div class="gate"><div class="big">Руководитель</div><div class="who">Введите PIN</div>
     <input id="pinin" type="tel" inputmode="numeric" maxlength="8" placeholder="PIN" style="text-align:center;font-size:22px;letter-spacing:6px">
     <div id="pinerr" style="color:var(--bad);font-size:13px;text-align:center;height:18px;margin-top:6px"></div>
     <button class="btn" onclick="checkPin('${role}','${need}')">Войти</button>
     <button class="btn ghost" onclick="render()">← Назад</button>
-    <div class="small-note">PIN по умолчанию: Админ 1111, РОП 2222.</div></div>`;
+    <div class="small-note">PIN по умолчанию: 1111 (меняется в настройках).</div></div>`;
   setTimeout(()=>document.getElementById("pinin").focus(),50);
 }
 function checkPin(role, need){
@@ -420,7 +505,7 @@ function checkPin(role, need){
 function loginManager(id){ setSession({role:"manager", managerId:id}); ROUTE=null; render(); }
 
 /* ============================================================
-   ЭКРАН 1: ДАШБОРД (РОП/Админ)
+   ЭКРАН 1: ДАШБОРД (Руководитель)
    ============================================================ */
 function periodSeg(){
   const items=[["today","Сегодня"],["yesterday","Вчера"],["week","Неделя"],["month","Месяц"]];
@@ -440,8 +525,24 @@ function renderDashboard(v){
   });
   const deptPct=pct(deptSoldMonth, deptPlan);
   const remain=Math.max(0, deptPlan-deptSoldMonth);
+  // прогноз отдела = сумма прогнозов менеджеров
+  let deptForecast=0;
+  DB.config.managers.forEach(m=>{
+    const wd=workingDaysStats(m.id); const sm=salesSum(entriesFor(m.id,monthSet));
+    deptForecast += wd.passed>0? (sm/wd.passed)*wd.total : sm;
+  });
+  const deptForePct=pct(deptForecast, deptPlan);
+
+  // Заметная кнопка демо-данных
+  html+=`<button class="btn teal" onclick="fillDemo()" style="margin-top:0">✨ Заполнить демо-данными</button>`;
+
   html+=`<div class="card"><h3>Итоги по отделу (план — месяц)</h3>
-    <div class="kpis">
+    ${speedoSVG(deptPct, deptForePct)}
+    <div class="gauge-legend">
+      <span><b style="color:#1e2430">▎</b> стрелка — сейчас (${deptPct}%)</span>
+      <span><b style="color:#4451d6">▎</b> метка — прогноз (${deptForePct}%)</span>
+    </div>
+    <div class="kpis" style="margin-top:12px">
       <div class="kpi"><div class="k-lbl">План отдела</div><div class="k-val">${fmtMoney(deptPlan)}</div></div>
       <div class="kpi"><div class="k-lbl">Продано (месяц)</div><div class="k-val">${fmtMoney(deptSoldMonth)}</div></div>
       <div class="kpi"><div class="k-lbl">Выполнение</div><div class="k-val">${deptPct}%</div></div>
@@ -461,9 +562,14 @@ function renderDashboard(v){
     const plan=managerPlan(m.id);
     const p=pct(soldMonth, plan);
     html+=`<div class="mgr-card">
-      <div class="top"><div class="nm">${escapeHtml(m.name)}</div>
-        <span class="pill ${p>=100?'good':(p<50?'bad':'warn')}">${p}% плана</span></div>
-      <div class="bar ${p<70?'warn':''}"><span style="width:${Math.min(100,p)}%"></span></div>
+      <div class="mgr-head">
+        <div class="mgr-ring">${ringSVG(p)}</div>
+        <div style="flex:1;min-width:0">
+          <div class="top"><div class="nm">${escapeHtml(m.name)}</div>
+            <span class="pill ${p>=100?'good':(p<50?'bad':'warn')}">${p}% плана</span></div>
+          <div class="bar ${p<70?'warn':''}" style="margin-top:6px"><span style="width:${Math.min(100,p)}%"></span></div>
+        </div>
+      </div>
       <div class="mini">
         <div><span>Продажи</span><b>${fmtMoney(sold)}</b></div>
         <div><span>Оплат</span><b>${payCount(ePeriod)}</b></div>
@@ -472,9 +578,9 @@ function renderDashboard(v){
       </div></div>`;
   });
 
-  // Обращения "нужна помощь РОПа"
+  // Обращения "нужна помощь руководителя"
   const open=DB.help.filter(h=>!h.resolved).sort((a,b)=> (b.date||"").localeCompare(a.date||""));
-  html+=`<div class="card"><h3>🆘 Нужна помощь РОПа (${open.length})</h3>`;
+  html+=`<div class="card"><h3>🆘 Нужна помощь руководителя (${open.length})</h3>`;
   if(!open.length) html+=`<div class="empty-state">Открытых обращений нет</div>`;
   else open.forEach(h=>{
     html+=`<div class="lrow"><div>
@@ -509,19 +615,30 @@ function renderCabinet(v){
   // прогноз: продано / прошедшие раб.дни × все раб.дни
   const forecast = wd.passed>0? (sold/wd.passed)*wd.total : sold;
   const forecastLow = forecast < plan;
+  const forePct = pct(forecast, plan);
 
   const {pat,doc}=categorySplit(eMonth);
   const totalCat=pat+doc;
 
   let html=`<h2 class="screen-title">Мой кабинет</h2>${deviceNote()}
     <div class="card"><h3>${escapeHtml(managerName(mid))} · текущий месяц</h3>
-    <div class="kpis">
-      <div class="kpi"><div class="k-lbl">План месяца</div><div class="k-val">${fmtMoney(plan)}</div></div>
-      <div class="kpi"><div class="k-lbl">Продано</div><div class="k-val">${fmtMoney(sold)}</div></div>
-      <div class="kpi"><div class="k-lbl">Выполнение</div><div class="k-val">${p}%</div></div>
-      <div class="kpi"><div class="k-lbl">Осталось</div><div class="k-val">${fmtMoney(remain)}</div></div>
+      ${speedoSVG(p, forePct)}
+      <div class="gauge-legend">
+        <span><b style="color:#1e2430">▎</b> стрелка — сейчас (${p}%)</span>
+        <span><b style="color:#4451d6">▎</b> метка — прогноз (${forePct}%)</span>
+      </div>
+      <div class="kpis" style="margin-top:12px">
+        <div class="kpi"><div class="k-lbl">План месяца</div><div class="k-val">${fmtMoney(plan)}</div></div>
+        <div class="kpi"><div class="k-lbl">Продано</div><div class="k-val">${fmtMoney(sold)}</div></div>
+      </div>
+      <div class="hint" style="margin-top:8px">Продано / план</div>
+      <div class="bar ${p<70?'warn':''}"><span style="width:${Math.min(100,p)}%"></span></div>
+      <div class="hint" style="margin-top:6px;text-align:right">${fmtMoney(sold)} из ${fmtMoney(plan)} · осталось ${fmtMoney(remain)}</div>
     </div>
-    <div class="bar ${p<70?'warn':''}"><span style="width:${Math.min(100,p)}%"></span></div></div>
+
+    <div class="card"><h3>📊 Продажи по дням (месяц)</h3>
+      ${monthBarSVG(mid)}
+    </div>
 
     <div class="card"><h3>🚀 Прогресс до цели</h3>
     <div class="mini" style="grid-template-columns:1fr">
@@ -545,7 +662,7 @@ function renderCabinet(v){
       <div class="s-cat"><div class="s-v">${fmtMoney(doc)}</div><div class="s-l">Врачи · ${totalCat>0?Math.round(doc/totalCat*100):0}%</div></div>
     </div></div>
 
-    <button class="btn warn" onclick="openHelp()">🆘 Нужна помощь РОПа</button>`;
+    <button class="btn warn" onclick="openHelp()">🆘 Нужна помощь руководителя</button>`;
   v.innerHTML=html;
 }
 
@@ -604,7 +721,7 @@ function renderEntry(v){
     </div>
 
     <button class="btn teal" onclick="saveEntry()">💾 Сохранить</button>
-    <button class="btn warn" onclick="openHelp()">🆘 Нужна помощь РОПа</button>`;
+    <button class="btn warn" onclick="openHelp()">🆘 Нужна помощь руководителя</button>`;
 }
 function blankDraft(mid, date){
   return {id:"e_"+mid+"_"+date, date, managerId:mid,
@@ -683,7 +800,7 @@ function addSale(){
 }
 
 /* ============================================================
-   ЭКРАН 4: ПЛАНЫ (РОП/Админ)
+   ЭКРАН 4: ПЛАНЫ (Руководитель)
    ============================================================ */
 function renderPlans(v){
   let rows=DB.config.managers.map(m=>`
@@ -767,10 +884,16 @@ function renderHistory(v){
 }
 
 /* ============================================================
-   ЭКРАН 6: МОЙ КАЛЕНДАРЬ (Менеджер)
+   ЭКРАН 6: КАЛЕНДАРЬ (Менеджер — свой; Руководитель — любой)
    ============================================================ */
+let CAL_MGR=null;
+function calMgrId(){
+  if(!isBoss()) return SESSION.managerId;
+  if(!CAL_MGR || !DB.config.managers.some(m=>m.id===CAL_MGR)) CAL_MGR=(DB.config.managers[0]||{}).id;
+  return CAL_MGR;
+}
 function renderCalendar(v){
-  const mid=SESSION.managerId;
+  const mid=calMgrId();
   const now=new Date();
   const y=now.getFullYear(), mo=now.getMonth();
   const monthName=["Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"][mo];
@@ -796,15 +919,25 @@ function renderCalendar(v){
   }
   const wd=workingDaysStats(mid);
 
-  v.innerHTML=`<h2 class="screen-title">Мой календарь</h2>${deviceNote()}
-    <div class="card"><h3>${monthName} ${y}</h3>
-      <div class="hint" style="margin-top:-4px">Тап по дню — отметить/снять личный выходной. Праздники РК учтены. Переносы выходных вносите вручную.</div>
+  let mgrPicker="";
+  if(isBoss()){
+    mgrPicker=`<label>Календарь менеджера</label>
+      <select id="cal-mgr" onchange="CAL_MGR=this.value;render()">
+        ${DB.config.managers.map(m=>`<option value="${m.id}"${m.id===mid?' selected':''}>${escapeHtml(m.name)}</option>`).join("")}
+      </select>`;
+  }
+
+  v.innerHTML=`<h2 class="screen-title">Календарь</h2>${deviceNote()}
+    <div class="note" style="background:#eef1fb;border-color:#d5ddf7;color:#3b47a8">
+      <span>👆</span><span><b>Нажмите на день</b>, чтобы отметить или снять выходной.</span></div>
+    ${mgrPicker?`<div class="card">${mgrPicker}</div>`:""}
+    <div class="card"><h3>${escapeHtml(managerName(mid))} · ${monthName} ${y}</h3>
       <div class="cal">${cells}</div>
       <div class="legend">
-        <span><i style="background:#f4f6fb"></i>Рабочий</span>
-        <span><i style="background:#f0f1f5"></i>Выходной</span>
+        <span><i style="background:#f4f6fb;border:1px solid #e5e9f2"></i>Рабочий день</span>
+        <span><i style="background:#f0f1f5"></i>Выходной (сб-вс)</span>
         <span><i style="background:#fdecea"></i>Праздник РК</span>
-        <span><i style="background:#fff3d6"></i>Мой выходной</span>
+        <span><i style="background:#fff3d6"></i>Личный выходной</span>
       </div>
     </div>
     <div class="card"><div class="kpis">
@@ -813,7 +946,7 @@ function renderCalendar(v){
     </div></div>`;
 }
 function toggleDayOff(ds){
-  const mid=SESSION.managerId;
+  const mid=calMgrId();
   const arr=DB.daysOff[mid]||[];
   const i=arr.indexOf(ds);
   if(i>=0) arr.splice(i,1); else arr.push(ds);
@@ -821,33 +954,31 @@ function toggleDayOff(ds){
 }
 
 /* ============================================================
-   ЭКРАН 7: НАСТРОЙКИ (Админ) + демо-данные + PIN + менеджеры
+   ЭКРАН 7: НАСТРОЙКИ (Руководитель) + демо-данные + PIN + менеджеры
    ============================================================ */
 function renderSettings(v){
   const mgrRows=DB.config.managers.map(m=>`
     <div class="lrow"><input id="nm-${m.id}" value="${escapeHtml(m.name)}" style="margin:0">
       <button class="x" onclick="removeManager('${m.id}')">×</button></div>`).join("");
   v.innerHTML=`<h2 class="screen-title">Настройки</h2>${deviceNote()}
-    <div class="card"><h3>PIN-коды</h3>
-      <label>PIN Админа</label><input id="pin-admin" value="${DB.config.pinAdmin}">
-      <label>PIN РОПа</label><input id="pin-rop" value="${DB.config.pinRop}">
+    <div class="card"><h3>PIN руководителя</h3>
+      <label>PIN для входа как «Руководитель»</label><input id="pin-admin" value="${DB.config.pinAdmin}">
       <button class="btn ghost" onclick="savePins()">Сохранить PIN</button>
     </div>
     <div class="card"><h3>Менеджеры</h3>${mgrRows}
       <button class="btn ghost" onclick="addManager()">+ Добавить менеджера</button>
       <button class="btn teal" onclick="saveManagers()">Сохранить имена</button>
     </div>
-    <div class="card"><h3>Демо-данные</h3>
-      <div class="hint" style="margin-top:-4px">Создаст 3 менеджеров с планами и записи за текущий месяц (обе категории).</div>
-      <button class="btn" onclick="fillDemo()">✨ Заполнить демо-данными</button>
+    <div class="card"><h3>✨ Демо-данные</h3>
+      <div class="hint" style="margin-top:-4px">Создаст 3 менеджеров с планами и записи по разным дням текущего месяца: обе категории (Пациенты и Врачи), предоплаты, возвраты, данные Сипуни/WhatsApp — чтобы спидометры и графики сразу были заполнены.</div>
+      <button class="btn teal" onclick="fillDemo()">✨ Заполнить демо-данными</button>
       <button class="btn warn" onclick="wipeAll()">🗑 Очистить все данные</button>
     </div>
     <div class="small-note">Данные на этом устройстве (localStorage «salesapp_v1»).<br>Общая база и синхронизация с Сипуни — следующий этап.</div>`;
 }
 function savePins(){
   DB.config.pinAdmin=(document.getElementById('pin-admin').value||"1111").trim();
-  DB.config.pinRop=(document.getElementById('pin-rop').value||"2222").trim();
-  save(); toast("PIN сохранены ✓");
+  save(); toast("PIN сохранён ✓");
 }
 function addManager(){
   const id="m"+Date.now().toString(36);
@@ -898,10 +1029,8 @@ function fillDemo(){
       const nSales=Math.floor(rnd()*3); // 0..2 продажи в день
       for(let k=0;k<nSales;k++){
         const amount=(150+Math.floor(rnd()*40)*10)*1000; // 150k..550k
-        sales.push({amount, category: rnd()<0.35?"doctors":"patients", prepay: rnd()<0.5, isReturn:false});
-      }
-      if(rnd()<0.05 && sales.length===0){ // редкий возврат
-        sales.push({amount:180000, category:"patients", prepay:false, isReturn:true});
+        // чередуем категории, чтобы обе были представлены; часть — предоплаты
+        sales.push({amount, category: rnd()<0.4?"doctors":"patients", prepay: rnd()<0.5, isReturn:false});
       }
       base.entries.push({
         id:"e_"+mid+"_"+ds, date:ds, managerId:mid,
@@ -912,9 +1041,21 @@ function fillDemo(){
       });
     });
   });
+  // гарантированные возвраты (пара штук), чтобы логика возвратов была видна
+  function injectReturn(mid, dayNum, amount, cat){
+    const ds=ymd(new Date(y,mo,dayNum));
+    if(parseYMD(ds)>now) return;
+    let e=base.entries.find(x=>x.managerId===mid && x.date===ds);
+    if(!e){ e={id:"e_"+mid+"_"+ds, date:ds, managerId:mid,
+      sipuni:{talkMin:30,calls:18,success:3,dozvon:5,nedozvon:4}, wa:{calls:2,timeMin:12}, invoices:2, sales:[]};
+      base.entries.push(e); }
+    e.sales.push({amount, category:cat, prepay:false, isReturn:true});
+  }
+  injectReturn("m1", Math.min(9, now.getDate()), 180000, "patients");
+  injectReturn("m2", Math.min(16, now.getDate()), 250000, "doctors");
   // пара обращений о помощи
   base.help=[
-    {id:"h1",managerId:"m1",date:today,client:"Асель +7 701 …",note:"Сомневается по цене брекетов, нужна поддержка РОПа",resolved:false},
+    {id:"h1",managerId:"m1",date:today,client:"Асель +7 701 …",note:"Сомневается по цене брекетов, нужна поддержка руководителя",resolved:false},
     {id:"h2",managerId:"m3",date:today,client:"Клиника «Смайл»",note:"Хотят договор на обучение врачей",resolved:false}
   ];
   DB=base; save(); ROUTE=isBoss()?"dashboard":"cabinet"; render();
@@ -922,16 +1063,16 @@ function fillDemo(){
 }
 
 /* ============================================================
-   ОБРАЩЕНИЕ «НУЖНА ПОМОЩЬ РОПа»
+   ОБРАЩЕНИЕ «НУЖНА ПОМОЩЬ РУКОВОДИТЕЛЯ»
    ============================================================ */
 function openHelp(){
   showModal(`
-    <h3>🆘 Нужна помощь РОПа</h3>
+    <h3>🆘 Нужна помощь руководителя</h3>
     <label>Клиент (имя / телефон)</label>
     <input id="h-client" autofocus>
     <label>Короткая заметка</label>
     <input id="h-note" placeholder="Что нужно?">
-    <button class="btn warn" onclick="submitHelp()">Отправить РОПу</button>
+    <button class="btn warn" onclick="submitHelp()">Отправить руководителю</button>
     <button class="btn ghost" onclick="closeModal()">Отмена</button>
   `);
 }
@@ -940,7 +1081,7 @@ function submitHelp(){
   const note=document.getElementById('h-note').value.trim();
   if(!client && !note){ toast("Заполните поля"); return; }
   DB.help.push({id:"h_"+Date.now().toString(36), managerId:SESSION.managerId, date:todayStr(), client, note, resolved:false});
-  save(); closeModal(); toast("Отправлено РОПу ✓");
+  save(); closeModal(); toast("Отправлено руководителю ✓");
 }
 
 /* ============================================================
