@@ -1,0 +1,974 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Отдел продаж</title>
+<!--
+  Отдел продаж — мини-приложение (прототип, mobile-first, стиль Telegram mini-app)
+  Автономно: только vanilla JS + CSS, без внешних библиотек/CDN/шрифтов/картинок.
+  Данные хранятся в localStorage под ключом "salesapp_v1" в виде JSON.
+  Структура специально сделана «плоской», чтобы позже перенести в общую БД
+  и подключить синхронизацию с Сипуни (Sipuni).
+-->
+<style>
+:root{
+  --bg:#eef1f7; --card:#ffffff; --ink:#1e2430; --muted:#75809a;
+  --indigo:#5b6ef5; --indigo-d:#4451d6; --teal:#12b3a6; --teal-d:#0e9488;
+  --line:#e5e9f2; --good:#12b3a6; --warn:#e5a13a; --bad:#e5544b;
+  --chip:#f2f4fb; --shadow:0 6px 18px rgba(40,50,90,.08);
+  --radius:16px;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  background:var(--bg); color:var(--ink); font-size:16px; line-height:1.4;
+  -webkit-font-smoothing:antialiased;
+}
+#app{max-width:520px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;background:var(--bg)}
+header.topbar{
+  position:sticky;top:0;z-index:20;
+  background:linear-gradient(135deg,var(--indigo),var(--teal));
+  color:#fff;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;
+  box-shadow:0 2px 12px rgba(40,50,90,.18);
+}
+header.topbar .ttl{font-weight:700;font-size:18px;letter-spacing:.2px}
+header.topbar .sub{font-size:12px;opacity:.9;margin-top:1px}
+header.topbar button.logout{
+  background:rgba(255,255,255,.18);border:0;color:#fff;padding:7px 12px;border-radius:10px;
+  font-size:13px;font-weight:600;
+}
+main{flex:1;padding:14px 14px 90px 14px}
+.note{
+  background:#fff8e8;border:1px solid #f2e2b8;color:#8a6d1f;border-radius:12px;
+  padding:9px 12px;font-size:12.5px;margin-bottom:12px;display:flex;gap:8px;align-items:flex-start;
+}
+.note b{color:#7a5f16}
+.card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:14px;margin-bottom:12px}
+.card h3{margin:0 0 10px;font-size:15px}
+.row{display:flex;gap:10px}
+.row>*{flex:1}
+h2.screen-title{font-size:20px;margin:2px 0 12px}
+label{display:block;font-size:13px;color:var(--muted);margin:10px 0 4px;font-weight:600}
+input,select{
+  width:100%;padding:12px;border:1px solid var(--line);border-radius:12px;font-size:16px;
+  background:#fbfcff;color:var(--ink);outline:none;
+}
+input:focus,select:focus{border-color:var(--indigo);background:#fff}
+.hint{font-size:11.5px;color:var(--muted);margin-top:3px}
+button{cursor:pointer;font-family:inherit}
+.btn{
+  display:block;width:100%;padding:14px;border:0;border-radius:14px;font-size:16px;font-weight:700;
+  background:var(--indigo);color:#fff;margin-top:10px;box-shadow:var(--shadow);
+}
+.btn:active{transform:translateY(1px)}
+.btn.teal{background:var(--teal)}
+.btn.ghost{background:#eef1fb;color:var(--indigo)}
+.btn.warn{background:#fdeceb;color:var(--bad)}
+.btn.sm{padding:9px 12px;font-size:13px;width:auto;margin:0;display:inline-block}
+.pill{display:inline-block;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:700;background:var(--chip);color:var(--muted)}
+.pill.good{background:#e2f7f4;color:var(--teal-d)}
+.pill.bad{background:#fdecea;color:var(--bad)}
+.pill.warn{background:#fdf3e2;color:#a9781f}
+/* period toggle */
+.seg{display:flex;background:#e7ebf6;border-radius:12px;padding:4px;gap:4px;margin-bottom:12px}
+.seg button{flex:1;border:0;background:transparent;padding:9px 4px;border-radius:9px;font-size:13px;font-weight:600;color:var(--muted)}
+.seg button.on{background:#fff;color:var(--indigo);box-shadow:var(--shadow)}
+/* KPI grid */
+.kpis{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.kpi{background:var(--card);border-radius:14px;padding:12px;box-shadow:var(--shadow)}
+.kpi .k-lbl{font-size:12px;color:var(--muted);font-weight:600}
+.kpi .k-val{font-size:20px;font-weight:800;margin-top:2px}
+.kpi .k-sub{font-size:11.5px;color:var(--muted);margin-top:2px}
+/* progress bar */
+.bar{height:10px;background:#eceff7;border-radius:999px;overflow:hidden;margin-top:8px}
+.bar>span{display:block;height:100%;background:linear-gradient(90deg,var(--indigo),var(--teal));border-radius:999px}
+.bar.warn>span{background:linear-gradient(90deg,#e5a13a,#e5544b)}
+.mgr-card{background:var(--card);border-radius:14px;box-shadow:var(--shadow);padding:13px;margin-bottom:10px}
+.mgr-card .top{display:flex;justify-content:space-between;align-items:center}
+.mgr-card .nm{font-weight:800;font-size:15px}
+.mini{display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;margin-top:10px;font-size:12.5px}
+.mini div span{color:var(--muted)}
+.mini div b{float:right;font-weight:700}
+/* role gate */
+.gate{padding:24px 16px}
+.gate .big{font-size:26px;font-weight:800;text-align:center;margin:20px 0 4px}
+.gate .who{text-align:center;color:var(--muted);margin-bottom:24px}
+.role-btn{
+  display:flex;align-items:center;gap:14px;width:100%;padding:18px;border:0;border-radius:16px;
+  background:#fff;box-shadow:var(--shadow);margin-bottom:12px;font-size:17px;font-weight:700;color:var(--ink);text-align:left;
+}
+.role-btn .emo{font-size:26px}
+.role-btn .arw{margin-left:auto;color:var(--muted)}
+/* nav */
+nav.tabbar{
+  position:fixed;bottom:0;left:0;right:0;max-width:520px;margin:0 auto;
+  background:#fff;border-top:1px solid var(--line);display:flex;z-index:30;
+  padding-bottom:env(safe-area-inset-bottom,0);
+}
+nav.tabbar button{
+  flex:1;border:0;background:transparent;padding:9px 2px;font-size:10.5px;color:var(--muted);
+  display:flex;flex-direction:column;align-items:center;gap:3px;font-weight:600;
+}
+nav.tabbar button .ic{font-size:20px}
+nav.tabbar button.on{color:var(--indigo)}
+/* list rows */
+.lrow{display:flex;justify-content:space-between;align-items:center;padding:11px 0;border-bottom:1px solid var(--line);gap:10px}
+.lrow:last-child{border-bottom:0}
+.lrow .l-main{font-weight:600;font-size:14px}
+.lrow .l-sub{font-size:12px;color:var(--muted);margin-top:2px}
+.tag{font-size:10.5px;padding:2px 7px;border-radius:6px;font-weight:700;background:var(--chip);color:var(--muted)}
+.tag.pat{background:#e8ecfd;color:var(--indigo-d)}
+.tag.doc{background:#e2f7f4;color:var(--teal-d)}
+.tag.ret{background:#fdecea;color:var(--bad)}
+.x{border:0;background:#fdecea;color:var(--bad);border-radius:9px;width:34px;height:34px;font-size:16px;font-weight:800;flex:none}
+/* modal */
+.modal-bg{position:fixed;inset:0;background:rgba(20,26,40,.45);z-index:50;display:flex;align-items:flex-end;justify-content:center}
+.modal{background:#fff;width:100%;max-width:520px;border-radius:20px 20px 0 0;padding:18px 16px 26px;box-shadow:0 -8px 30px rgba(0,0,0,.2)}
+.modal h3{margin:2px 0 6px;font-size:17px}
+.seg-2{display:flex;gap:8px;margin-top:4px}
+.seg-2 button{flex:1;padding:11px;border:1px solid var(--line);background:#fbfcff;border-radius:12px;font-weight:700;color:var(--muted);font-size:14px}
+.seg-2 button.on{border-color:var(--indigo);background:#eef1fb;color:var(--indigo)}
+/* calendar */
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin-top:8px}
+.cal .dh{text-align:center;font-size:11px;color:var(--muted);font-weight:700;padding:4px 0}
+.cal .d{aspect-ratio:1;display:flex;align-items:center;justify-content:center;border-radius:10px;font-size:14px;font-weight:600;background:#f4f6fb;color:var(--ink)}
+.cal .d.off{background:#f0f1f5;color:#b7becd}   /* выходной/праздник */
+.cal .d.hol{background:#fdecea;color:var(--bad)} /* праздник РК */
+.cal .d.pers{background:#fff3d6;color:#a9781f}   /* личный выходной */
+.cal .d.today{outline:2px solid var(--indigo)}
+.cal .d.empty{background:transparent}
+.legend{display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;font-size:11.5px;color:var(--muted)}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:4px;margin-right:4px;vertical-align:-1px}
+.split{display:flex;gap:8px;margin-top:10px}
+.split .s-cat{flex:1;background:#f6f8fd;border-radius:12px;padding:10px;text-align:center}
+.split .s-cat .s-v{font-weight:800;font-size:16px}
+.split .s-cat .s-l{font-size:11.5px;color:var(--muted)}
+.empty-state{text-align:center;color:var(--muted);padding:24px 8px;font-size:14px}
+.small-note{font-size:11px;color:var(--muted);text-align:center;margin-top:18px}
+.divider{height:1px;background:var(--line);margin:12px 0}
+.addbar{display:flex;gap:8px;align-items:center;justify-content:space-between;margin-top:6px}
+.tot-strong{font-size:22px;font-weight:800}
+</style>
+
+<div id="app">
+  <header class="topbar" id="topbar" style="display:none">
+    <div>
+      <div class="ttl">Отдел продаж</div>
+      <div class="sub" id="whoami"></div>
+    </div>
+    <button class="logout" onclick="logout()">Выйти</button>
+  </header>
+  <main id="view"></main>
+  <nav class="tabbar" id="tabbar" style="display:none"></nav>
+</div>
+
+<script>
+"use strict";
+/* ============================================================
+   ХРАНИЛИЩЕ
+   ============================================================ */
+const LS_KEY = "salesapp_v1";
+
+function defaultData(){
+  return {
+    config:{
+      pinAdmin:"1111",
+      pinRop:"2222",
+      managers:[
+        {id:"m1",name:"Менеджер 1"},
+        {id:"m2",name:"Менеджер 2"},
+        {id:"m3",name:"Менеджер 3"}
+      ],
+      deptPlan:0            // общий план отдела (0 = считать как сумму личных)
+    },
+    plans:{},              // { managerId:{monthPlan} }
+    entries:[],            // записи по дням
+    help:[],               // обращения "нужна помощь РОПа"
+    daysOff:{}             // { managerId:['YYYY-MM-DD',...] }
+  };
+}
+function load(){
+  try{
+    const raw = localStorage.getItem(LS_KEY);
+    if(!raw) return defaultData();
+    const d = JSON.parse(raw);
+    // мягкая миграция недостающих полей
+    const base = defaultData();
+    d.config = Object.assign(base.config, d.config||{});
+    d.plans = d.plans||{}; d.entries=d.entries||[]; d.help=d.help||[]; d.daysOff=d.daysOff||{};
+    return d;
+  }catch(e){ return defaultData(); }
+}
+function save(){ localStorage.setItem(LS_KEY, JSON.stringify(DB)); }
+let DB = load();
+
+/* сессия (роль) хранится отдельно */
+const SESS_KEY = "salesapp_v1_session";
+let SESSION = JSON.parse(localStorage.getItem(SESS_KEY)||"null"); // {role:'admin'|'rop'|'manager', managerId?}
+function setSession(s){ SESSION=s; localStorage.setItem(SESS_KEY, JSON.stringify(s)); }
+function clearSession(){ SESSION=null; localStorage.removeItem(SESS_KEY); }
+
+/* ============================================================
+   ДАТЫ / КАЛЕНДАРЬ КАЗАХСТАНА
+   ============================================================ */
+// Праздники-нерабочие даты РК 2026 (встроено).
+// ВНИМАНИЕ: возможны переносы выходных — менеджер правит вручную в «Мой календарь».
+const KZ_HOLIDAYS_2026 = [
+  "2026-01-01","2026-01-02", // Новый год
+  "2026-01-07",              // Православное Рождество
+  "2026-03-08",              // Женский день
+  "2026-03-21","2026-03-22","2026-03-23", // Наурыз
+  "2026-05-01",              // Единство народа
+  "2026-05-07",              // День защитника Отечества
+  "2026-05-09",              // День Победы
+  "2026-07-06",              // День столицы
+  "2026-08-30",              // День Конституции
+  "2026-10-25",              // День Республики
+  "2026-12-16","2026-12-17"  // День Независимости
+];
+const HOL_SET = new Set(KZ_HOLIDAYS_2026);
+
+function pad(n){ return n<10? "0"+n : ""+n; }
+function ymd(d){ return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()); }
+function todayStr(){ return ymd(new Date()); }
+function parseYMD(s){ const [y,m,dd]=s.split("-").map(Number); return new Date(y,m-1,dd); }
+
+function isWeekend(d){ const w=d.getDay(); return w===0||w===6; }
+function isHoliday(dateStr){ return HOL_SET.has(dateStr); }
+// Рабочий день = будний, не праздник РК, не личный выходной менеджера
+function isWorkingDay(dateStr, managerId){
+  const d=parseYMD(dateStr);
+  if(isWeekend(d)) return false;
+  if(isHoliday(dateStr)) return false;
+  if(managerId && (DB.daysOff[managerId]||[]).includes(dateStr)) return false;
+  return true;
+}
+// список дат месяца
+function monthDates(year, month){ // month:0-based
+  const res=[]; const dim=new Date(year,month+1,0).getDate();
+  for(let i=1;i<=dim;i++) res.push(ymd(new Date(year,month,i)));
+  return res;
+}
+function fmtMoney(n){
+  n = Math.round(n||0);
+  return n.toLocaleString("ru-RU") + " ₸";
+}
+function pct(part, whole){ if(!whole) return 0; return Math.round(part/whole*100); }
+
+/* период -> набор дат */
+function datesForPeriod(period){
+  const now=new Date();
+  if(period==="today") return [todayStr()];
+  if(period==="yesterday"){ const y=new Date(now); y.setDate(y.getDate()-1); return [ymd(y)]; }
+  if(period==="week"){ // последние 7 дней
+    const arr=[]; for(let i=6;i>=0;i--){ const d=new Date(now); d.setDate(d.getDate()-i); arr.push(ymd(d)); } return arr;
+  }
+  // month = текущий календарный месяц
+  return monthDates(now.getFullYear(), now.getMonth());
+}
+
+/* ============================================================
+   РАСЧЁТЫ
+   ============================================================ */
+function entriesFor(managerId, dateSet){
+  return DB.entries.filter(e=> e.managerId===managerId && dateSet.has(e.date));
+}
+// продажи: сумма без возвратов минус возвраты
+function salesSum(entries){
+  let s=0;
+  entries.forEach(e=> (e.sales||[]).forEach(x=>{
+    if(x.isReturn) s -= Number(x.amount)||0; else s += Number(x.amount)||0;
+  }));
+  return s;
+}
+// количество оплат (продажа с isReturn=false)
+function payCount(entries){
+  let c=0; entries.forEach(e=> (e.sales||[]).forEach(x=>{ if(!x.isReturn) c++; })); return c;
+}
+// средний чек = сумма оплат(без возвратов) / кол-во оплат
+function avgCheck(entries){
+  let sum=0,c=0;
+  entries.forEach(e=> (e.sales||[]).forEach(x=>{ if(!x.isReturn){ sum+=Number(x.amount)||0; c++; } }));
+  return c? sum/c : 0;
+}
+function sumField(entries, path){ // например 'sipuni.talkMin'
+  const [a,b]=path.split(".");
+  let s=0; entries.forEach(e=>{ const v=b? (e[a]&&e[a][b]) : e[a]; s+=Number(v)||0; }); return s;
+}
+function categorySplit(entries){
+  let pat=0, doc=0;
+  entries.forEach(e=> (e.sales||[]).forEach(x=>{
+    const amt=(x.isReturn? -1:1)*(Number(x.amount)||0);
+    if(x.category==="doctors") doc+=amt; else pat+=amt;
+  }));
+  return {pat,doc};
+}
+function managerPlan(managerId){ return Number((DB.plans[managerId]||{}).monthPlan)||0; }
+function deptPlanValue(){
+  if(Number(DB.config.deptPlan)>0) return Number(DB.config.deptPlan);
+  return DB.config.managers.reduce((s,m)=> s+managerPlan(m.id), 0);
+}
+function managerName(id){ const m=DB.config.managers.find(x=>x.id===id); return m? m.name : "—"; }
+
+// рабочие дни месяца для менеджера: прошедшие (<= сегодня) и всего
+function workingDaysStats(managerId){
+  const now=new Date();
+  const all=monthDates(now.getFullYear(), now.getMonth());
+  const today=todayStr();
+  let total=0, passed=0, remaining=0;
+  all.forEach(ds=>{
+    if(isWorkingDay(ds, managerId)){
+      total++;
+      if(ds < today) passed++;            // строго прошедшие (без сегодня)
+      if(ds >= today) remaining++;        // включая сегодня
+    }
+  });
+  return {total, passed, remaining};
+}
+
+/* ============================================================
+   РЕНДЕР — маршрутизация
+   ============================================================ */
+let ROUTE = null;
+let PERIOD = "today";
+
+function render(){
+  const topbar=document.getElementById("topbar");
+  const tabbar=document.getElementById("tabbar");
+  if(!SESSION){ topbar.style.display="none"; tabbar.style.display="none"; renderGate(); return; }
+  topbar.style.display="flex"; tabbar.style.display="flex";
+  document.getElementById("whoami").textContent = whoLabel();
+  if(!ROUTE) ROUTE = defaultRoute();
+  renderTabs();
+  const v=document.getElementById("view");
+  v.innerHTML="";
+  switch(ROUTE){
+    case "dashboard": renderDashboard(v); break;
+    case "cabinet":   renderCabinet(v); break;
+    case "entry":     renderEntry(v); break;
+    case "plans":     renderPlans(v); break;
+    case "history":   renderHistory(v); break;
+    case "calendar":  renderCalendar(v); break;
+    case "settings":  renderSettings(v); break;
+    default: renderDashboard(v);
+  }
+  window.scrollTo(0,0);
+}
+function whoLabel(){
+  if(SESSION.role==="admin") return "Админ (владелец)";
+  if(SESSION.role==="rop") return "РОП — руководитель отдела";
+  return "Менеджер · "+managerName(SESSION.managerId);
+}
+function isBoss(){ return SESSION.role==="admin"||SESSION.role==="rop"; }
+function defaultRoute(){ return isBoss()? "dashboard" : "cabinet"; }
+
+function renderTabs(){
+  const tabs = isBoss()
+    ? [["dashboard","📊","Дашборд"],["plans","🎯","Планы"],["history","🗂","История"],
+       ...(SESSION.role==="admin"? [["settings","⚙️","Настройки"]] : [])]
+    : [["cabinet","🏠","Кабинет"],["entry","✍️","Ввод"],["calendar","📅","Календарь"],["history","🗂","История"]];
+  const bar=document.getElementById("tabbar");
+  bar.innerHTML="";
+  tabs.forEach(([r,ic,lbl])=>{
+    const b=document.createElement("button");
+    b.className = ROUTE===r? "on":"";
+    b.innerHTML=`<span class="ic">${ic}</span>${lbl}`;
+    b.onclick=()=>{ ROUTE=r; render(); };
+    bar.appendChild(b);
+  });
+}
+function go(r){ ROUTE=r; render(); }
+function logout(){ clearSession(); ROUTE=null; render(); }
+
+/* ============================================================
+   ЭКРАН: РОЛЕВОЙ ВХОД
+   ============================================================ */
+function renderGate(){
+  const v=document.getElementById("view");
+  v.innerHTML=`
+    <div class="gate">
+      <div class="big">Отдел продаж</div>
+      <div class="who">Кто вы?</div>
+      <button class="role-btn" onclick="pickRole('admin')"><span class="emo">👑</span>Админ<span class="arw">›</span></button>
+      <button class="role-btn" onclick="pickRole('rop')"><span class="emo">🧭</span>РОП<span class="arw">›</span></button>
+      <button class="role-btn" onclick="pickRole('manager')"><span class="emo">📞</span>Менеджер<span class="arw">›</span></button>
+      <div class="small-note">Данные хранятся на этом устройстве (localStorage).<br>Общая база и синхронизация с Сипуни — на следующем этапе.</div>
+    </div>`;
+}
+function pickRole(role){
+  const v=document.getElementById("view");
+  if(role==="manager"){
+    const opts=DB.config.managers.map(m=>`<button class="role-btn" onclick="loginManager('${m.id}')"><span class="emo">📞</span>${escapeHtml(m.name)}<span class="arw">›</span></button>`).join("");
+    v.innerHTML=`<div class="gate"><div class="big">Менеджер</div><div class="who">Выберите себя</div>${opts}
+      <button class="btn ghost" onclick="render()">← Назад</button></div>`;
+    return;
+  }
+  const need = role==="admin"? DB.config.pinAdmin : DB.config.pinRop;
+  const title = role==="admin"? "Админ":"РОП";
+  v.innerHTML=`<div class="gate"><div class="big">${title}</div><div class="who">Введите PIN</div>
+    <input id="pinin" type="tel" inputmode="numeric" maxlength="8" placeholder="PIN" style="text-align:center;font-size:22px;letter-spacing:6px">
+    <div id="pinerr" style="color:var(--bad);font-size:13px;text-align:center;height:18px;margin-top:6px"></div>
+    <button class="btn" onclick="checkPin('${role}','${need}')">Войти</button>
+    <button class="btn ghost" onclick="render()">← Назад</button>
+    <div class="small-note">PIN по умолчанию: Админ 1111, РОП 2222.</div></div>`;
+  setTimeout(()=>document.getElementById("pinin").focus(),50);
+}
+function checkPin(role, need){
+  const val=document.getElementById("pinin").value.trim();
+  if(val===String(need)){ setSession({role}); ROUTE=null; render(); }
+  else document.getElementById("pinerr").textContent="Неверный PIN";
+}
+function loginManager(id){ setSession({role:"manager", managerId:id}); ROUTE=null; render(); }
+
+/* ============================================================
+   ЭКРАН 1: ДАШБОРД (РОП/Админ)
+   ============================================================ */
+function periodSeg(){
+  const items=[["today","Сегодня"],["yesterday","Вчера"],["week","Неделя"],["month","Месяц"]];
+  return `<div class="seg">${items.map(([k,l])=>`<button class="${PERIOD===k?'on':''}" onclick="PERIOD='${k}';render()">${l}</button>`).join("")}</div>`;
+}
+function renderDashboard(v){
+  const dates=new Set(datesForPeriod(PERIOD));
+  let html = `<h2 class="screen-title">Дашборд отдела</h2>${deviceNote()}${periodSeg()}`;
+
+  // Итоги по отделу — план всегда месячный; продано — за выбранный период
+  const monthSet=new Set(datesForPeriod("month"));
+  const deptPlan=deptPlanValue();
+  let deptSoldPeriod=0, deptSoldMonth=0;
+  DB.config.managers.forEach(m=>{
+    deptSoldPeriod += salesSum(entriesFor(m.id, dates));
+    deptSoldMonth  += salesSum(entriesFor(m.id, monthSet));
+  });
+  const deptPct=pct(deptSoldMonth, deptPlan);
+  const remain=Math.max(0, deptPlan-deptSoldMonth);
+  html+=`<div class="card"><h3>Итоги по отделу (план — месяц)</h3>
+    <div class="kpis">
+      <div class="kpi"><div class="k-lbl">План отдела</div><div class="k-val">${fmtMoney(deptPlan)}</div></div>
+      <div class="kpi"><div class="k-lbl">Продано (месяц)</div><div class="k-val">${fmtMoney(deptSoldMonth)}</div></div>
+      <div class="kpi"><div class="k-lbl">Выполнение</div><div class="k-val">${deptPct}%</div></div>
+      <div class="kpi"><div class="k-lbl">Осталось</div><div class="k-val">${fmtMoney(remain)}</div></div>
+    </div>
+    <div class="bar ${deptPct<70?'warn':''}"><span style="width:${Math.min(100,deptPct)}%"></span></div>
+    <div class="hint" style="margin-top:8px">Продано за «${periodLabel(PERIOD)}»: <b>${fmtMoney(deptSoldPeriod)}</b></div>
+  </div>`;
+
+  // По каждому менеджеру
+  html+=`<h3 style="margin:4px 2px 8px">Менеджеры · ${periodLabel(PERIOD)}</h3>`;
+  DB.config.managers.forEach(m=>{
+    const ePeriod=entriesFor(m.id, dates);
+    const eMonth=entriesFor(m.id, monthSet);
+    const sold=salesSum(ePeriod);
+    const soldMonth=salesSum(eMonth);
+    const plan=managerPlan(m.id);
+    const p=pct(soldMonth, plan);
+    html+=`<div class="mgr-card">
+      <div class="top"><div class="nm">${escapeHtml(m.name)}</div>
+        <span class="pill ${p>=100?'good':(p<50?'bad':'warn')}">${p}% плана</span></div>
+      <div class="bar ${p<70?'warn':''}"><span style="width:${Math.min(100,p)}%"></span></div>
+      <div class="mini">
+        <div><span>Продажи</span><b>${fmtMoney(sold)}</b></div>
+        <div><span>Оплат</span><b>${payCount(ePeriod)}</b></div>
+        <div><span>На линии (Сипуни)</span><b>${sumField(ePeriod,'sipuni.talkMin')} мин</b></div>
+        <div><span>WhatsApp</span><b>${sumField(ePeriod,'wa.timeMin')} мин</b></div>
+      </div></div>`;
+  });
+
+  // Обращения "нужна помощь РОПа"
+  const open=DB.help.filter(h=>!h.resolved).sort((a,b)=> (b.date||"").localeCompare(a.date||""));
+  html+=`<div class="card"><h3>🆘 Нужна помощь РОПа (${open.length})</h3>`;
+  if(!open.length) html+=`<div class="empty-state">Открытых обращений нет</div>`;
+  else open.forEach(h=>{
+    html+=`<div class="lrow"><div>
+      <div class="l-main">${escapeHtml(h.client||"Клиент не указан")}</div>
+      <div class="l-sub">${escapeHtml(managerName(h.managerId))} · ${h.date||""}</div>
+      <div class="l-sub" style="color:var(--ink);margin-top:4px">${escapeHtml(h.note||"")}</div>
+    </div><button class="btn sm teal" onclick="resolveHelp('${h.id}')">Решено</button></div>`;
+  });
+  html+=`</div>`;
+  v.innerHTML=html;
+}
+function resolveHelp(id){ const h=DB.help.find(x=>x.id===id); if(h){ h.resolved=true; save(); render(); } }
+function periodLabel(p){ return {today:"Сегодня",yesterday:"Вчера",week:"Неделя",month:"Месяц"}[p]; }
+
+/* ============================================================
+   ЭКРАН 2: МОЙ КАБИНЕТ (Менеджер)
+   ============================================================ */
+function renderCabinet(v){
+  const mid=SESSION.managerId;
+  const monthSet=new Set(datesForPeriod("month"));
+  const eMonth=entriesFor(mid, monthSet);
+  const plan=managerPlan(mid);
+  const sold=salesSum(eMonth);
+  const p=pct(sold, plan);
+  const remain=Math.max(0, plan-sold);
+  const avg=avgCheck(eMonth);
+  const wd=workingDaysStats(mid);
+
+  // прогресс до цели
+  const salesLeft = avg>0? Math.ceil(remain/avg) : null;
+  const paceNeed = wd.remaining>0? remain/wd.remaining : 0;
+  // прогноз: продано / прошедшие раб.дни × все раб.дни
+  const forecast = wd.passed>0? (sold/wd.passed)*wd.total : sold;
+  const forecastLow = forecast < plan;
+
+  const {pat,doc}=categorySplit(eMonth);
+  const totalCat=pat+doc;
+
+  let html=`<h2 class="screen-title">Мой кабинет</h2>${deviceNote()}
+    <div class="card"><h3>${escapeHtml(managerName(mid))} · текущий месяц</h3>
+    <div class="kpis">
+      <div class="kpi"><div class="k-lbl">План месяца</div><div class="k-val">${fmtMoney(plan)}</div></div>
+      <div class="kpi"><div class="k-lbl">Продано</div><div class="k-val">${fmtMoney(sold)}</div></div>
+      <div class="kpi"><div class="k-lbl">Выполнение</div><div class="k-val">${p}%</div></div>
+      <div class="kpi"><div class="k-lbl">Осталось</div><div class="k-val">${fmtMoney(remain)}</div></div>
+    </div>
+    <div class="bar ${p<70?'warn':''}"><span style="width:${Math.min(100,p)}%"></span></div></div>
+
+    <div class="card"><h3>🚀 Прогресс до цели</h3>
+    <div class="mini" style="grid-template-columns:1fr">
+      <div><span>Осталось продаж (по среднему чеку)</span><b>${salesLeft==null?"—":salesLeft+" шт"}</b></div>
+      <div><span>Средний чек</span><b>${avg>0?fmtMoney(avg):"—"}</b></div>
+      <div><span>Рабочих дней осталось</span><b>${wd.remaining}</b></div>
+      <div><span>Нужный темп</span><b>${paceNeed>0?fmtMoney(paceNeed)+" / день":"—"}</b></div>
+    </div>
+    <div class="hint">Средний чек = сумма оплат (без возвратов) ÷ число оплат. Рабочие дни — по календарю РК минус ваши выходные.</div></div>
+
+    <div class="card"><h3>🔮 Прогноз на конец месяца</h3>
+      <div class="tot-strong" style="color:${forecastLow?'var(--bad)':'var(--teal-d)'}">${fmtMoney(forecast)}</div>
+      <div class="hint">Если сохранится текущий темп (продано ÷ прошедшие раб.дни × все раб.дни месяца).</div>
+      ${forecastLow?`<div class="pill bad" style="margin-top:8px">⚠ Прогноз ниже плана на ${fmtMoney(plan-forecast)}</div>`
+                   :`<div class="pill good" style="margin-top:8px">✓ Идёте на выполнение плана</div>`}
+    </div>
+
+    <div class="card"><h3>🧩 Продажи по категориям (месяц)</h3>
+    <div class="split">
+      <div class="s-cat"><div class="s-v">${fmtMoney(pat)}</div><div class="s-l">Пациенты · ${totalCat>0?Math.round(pat/totalCat*100):0}%</div></div>
+      <div class="s-cat"><div class="s-v">${fmtMoney(doc)}</div><div class="s-l">Врачи · ${totalCat>0?Math.round(doc/totalCat*100):0}%</div></div>
+    </div></div>
+
+    <button class="btn warn" onclick="openHelp()">🆘 Нужна помощь РОПа</button>`;
+  v.innerHTML=html;
+}
+
+/* ============================================================
+   ЭКРАН 3: ВВЕСТИ ДАННЫЕ (Менеджер)
+   ============================================================ */
+let ENTRY_DRAFT=null; // черновик текущей записи
+function renderEntry(v){
+  const mid=SESSION.managerId;
+  if(!ENTRY_DRAFT || ENTRY_DRAFT.managerId!==mid) loadDraft(mid, todayStr());
+  const d=ENTRY_DRAFT;
+  let salesList = (d.sales||[]).map((s,i)=>{
+    const tag = s.isReturn? `<span class="tag ret">возврат</span>` : (s.category==="doctors"? `<span class="tag doc">врачи</span>`:`<span class="tag pat">пациенты</span>`);
+    return `<div class="lrow"><div>
+      <div class="l-main">${s.isReturn?"−":""}${fmtMoney(s.amount)}</div>
+      <div class="l-sub">${tag} ${s.prepay?'<span class="tag">предоплата</span>':''}</div>
+    </div><button class="x" onclick="delSale(${i})">×</button></div>`;
+  }).join("");
+  if(!salesList) salesList=`<div class="empty-state">Продаж пока нет</div>`;
+
+  const totalDay=salesSum([d]);
+
+  v.innerHTML=`<h2 class="screen-title">Ввести данные</h2>${deviceNote()}
+    <div class="card">
+      <label>Дата</label>
+      <input type="date" id="e-date" value="${d.date}" onchange="changeDraftDate(this.value)">
+    </div>
+
+    <div class="card"><h3>📞 Сипуни <span class="pill">пока вручную</span></h3>
+      <div class="hint" style="margin-top:-4px;margin-bottom:6px">Позже эти данные будут подтягиваться из Сипуни автоматически.</div>
+      <label>Время разговоров, мин</label><input type="number" min="0" id="e-talk" value="${d.sipuni.talkMin||''}">
+      <label>Звонки (всего)</label><input type="number" min="0" id="e-calls" value="${d.sipuni.calls||''}">
+      <label>Успешные дозвоны (разговор &gt; 5 мин)</label><input type="number" min="0" id="e-success" value="${d.sipuni.success||''}">
+      <div class="hint">Успешный дозвон = разговор ДОЛЬШЕ 5 минут.</div>
+      <label>Дозвоны (разговор &lt; 5 мин)</label><input type="number" min="0" id="e-dozvon" value="${d.sipuni.dozvon||''}">
+      <div class="hint">Дозвон = дозвонился, но коротко (до 5 минут).</div>
+      <label>Недозвоны</label><input type="number" min="0" id="e-nedozvon" value="${d.sipuni.nedozvon||''}">
+      <div class="hint">Недозвон = не дозвонился.</div>
+    </div>
+
+    <div class="card"><h3>💬 WhatsApp (личный) <span class="pill">всегда вручную</span></h3>
+      <div class="hint" style="margin-top:-4px;margin-bottom:6px">Звонки иностранным клиентам с личного WhatsApp.</div>
+      <label>Звонки</label><input type="number" min="0" id="e-wacalls" value="${d.wa.calls||''}">
+      <label>Время, мин</label><input type="number" min="0" id="e-watime" value="${d.wa.timeMin||''}">
+    </div>
+
+    <div class="card"><h3>🧾 Счета выставленные</h3>
+      <input type="number" min="0" id="e-inv" value="${d.invoices||''}">
+    </div>
+
+    <div class="card"><h3>💰 Продажи за день</h3>
+      ${salesList}
+      <div class="divider"></div>
+      <div class="addbar"><b>Итого за день:</b><span class="tot-strong">${fmtMoney(totalDay)}</span></div>
+      <button class="btn ghost" onclick="openSaleForm()">+ Добавить продажу</button>
+    </div>
+
+    <button class="btn teal" onclick="saveEntry()">💾 Сохранить</button>
+    <button class="btn warn" onclick="openHelp()">🆘 Нужна помощь РОПа</button>`;
+}
+function blankDraft(mid, date){
+  return {id:"e_"+mid+"_"+date, date, managerId:mid,
+    sipuni:{talkMin:0,calls:0,success:0,dozvon:0,nedozvon:0},
+    wa:{calls:0,timeMin:0}, invoices:0, sales:[]};
+}
+function loadDraft(mid, date){
+  const ex=DB.entries.find(e=>e.managerId===mid && e.date===date);
+  ENTRY_DRAFT = ex? JSON.parse(JSON.stringify(ex)) : blankDraft(mid,date);
+}
+// перенести значения полей формы в черновик (перед сменой даты / сохранением)
+function pullForm(){
+  if(!ENTRY_DRAFT) return;
+  const g=id=>{ const el=document.getElementById(id); return el? (Number(el.value)||0):0; };
+  ENTRY_DRAFT.sipuni={talkMin:g('e-talk'),calls:g('e-calls'),success:g('e-success'),dozvon:g('e-dozvon'),nedozvon:g('e-nedozvon')};
+  ENTRY_DRAFT.wa={calls:g('e-wacalls'),timeMin:g('e-watime')};
+  ENTRY_DRAFT.invoices=g('e-inv');
+}
+function changeDraftDate(date){
+  pullForm();
+  loadDraft(SESSION.managerId, date);
+  render();
+}
+function saveEntry(){
+  pullForm();
+  const d=ENTRY_DRAFT;
+  d.id="e_"+d.managerId+"_"+d.date; // одна запись на менеджера на дату
+  const idx=DB.entries.findIndex(e=>e.managerId===d.managerId && e.date===d.date);
+  if(idx>=0) DB.entries[idx]=JSON.parse(JSON.stringify(d));
+  else DB.entries.push(JSON.parse(JSON.stringify(d)));
+  save();
+  toast("Сохранено ✓");
+}
+function delSale(i){ pullForm(); ENTRY_DRAFT.sales.splice(i,1); render(); }
+
+/* форма добавления продажи (модалка) */
+let SALE_TMP={amount:0,category:"patients",prepay:false,isReturn:false};
+function openSaleForm(){
+  pullForm();
+  SALE_TMP={amount:0,category:"patients",prepay:false,isReturn:false};
+  showModal(`
+    <h3>Добавить продажу</h3>
+    <label>Сумма, ₸</label>
+    <input type="number" min="0" id="s-amount" inputmode="numeric" autofocus>
+    <label>Категория</label>
+    <div class="seg-2" id="s-cat">
+      <button class="on" data-v="patients" onclick="segPick('s-cat',this)">Пациенты</button>
+      <button data-v="doctors" onclick="segPick('s-cat',this)">Врачи</button>
+    </div>
+    <label>Предоплата?</label>
+    <div class="seg-2" id="s-pre">
+      <button data-v="0" class="on" onclick="segPick('s-pre',this)">Нет</button>
+      <button data-v="1" onclick="segPick('s-pre',this)">Да</button>
+    </div>
+    <label>Это возврат?</label>
+    <div class="seg-2" id="s-ret">
+      <button data-v="0" class="on" onclick="segPick('s-ret',this)">Нет</button>
+      <button data-v="1" onclick="segPick('s-ret',this)">Да (вычесть)</button>
+    </div>
+    <button class="btn teal" onclick="addSale()">Добавить</button>
+    <button class="btn ghost" onclick="closeModal()">Отмена</button>
+  `);
+}
+function segPick(group, btn){
+  document.querySelectorAll('#'+group+' button').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');
+}
+function addSale(){
+  const amount=Number(document.getElementById('s-amount').value)||0;
+  if(amount<=0){ toast("Введите сумму"); return; }
+  const cat=document.querySelector('#s-cat button.on').dataset.v;
+  const prepay=document.querySelector('#s-pre button.on').dataset.v==="1";
+  const isReturn=document.querySelector('#s-ret button.on').dataset.v==="1";
+  ENTRY_DRAFT.sales.push({amount, category:cat, prepay, isReturn});
+  closeModal(); render();
+}
+
+/* ============================================================
+   ЭКРАН 4: ПЛАНЫ (РОП/Админ)
+   ============================================================ */
+function renderPlans(v){
+  let rows=DB.config.managers.map(m=>`
+    <label>${escapeHtml(m.name)} — план месяца, ₸</label>
+    <input type="number" min="0" id="plan-${m.id}" value="${managerPlan(m.id)||''}">
+  `).join("");
+  const sumPlans=DB.config.managers.reduce((s,m)=>s+managerPlan(m.id),0);
+  v.innerHTML=`<h2 class="screen-title">Планы</h2>${deviceNote()}
+    <div class="card"><h3>Планы менеджеров (месяц)</h3>${rows}</div>
+    <div class="card"><h3>Общий план отдела</h3>
+      <label>План отдела, ₸ (0 — считать как сумму планов менеджеров)</label>
+      <input type="number" min="0" id="dept-plan" value="${DB.config.deptPlan||''}">
+      <div class="hint">Сейчас сумма личных планов: <b>${fmtMoney(sumPlans)}</b></div>
+    </div>
+    <button class="btn teal" onclick="savePlans()">💾 Сохранить планы</button>`;
+}
+function savePlans(){
+  DB.config.managers.forEach(m=>{
+    const val=Number(document.getElementById('plan-'+m.id).value)||0;
+    DB.plans[m.id]={monthPlan:val};
+  });
+  DB.config.deptPlan=Number(document.getElementById('dept-plan').value)||0;
+  save(); toast("Планы сохранены ✓");
+}
+
+/* ============================================================
+   ЭКРАН 5: ИСТОРИЯ
+   ============================================================ */
+let HIST_PERIOD="month", HIST_MGR="all";
+function renderHistory(v){
+  const boss=isBoss();
+  const dates=new Set(datesForPeriod(HIST_PERIOD));
+  let entries=DB.entries.filter(e=>dates.has(e.date));
+  if(!boss){ entries=entries.filter(e=>e.managerId===SESSION.managerId); }
+  else if(HIST_MGR!=="all"){ entries=entries.filter(e=>e.managerId===HIST_MGR); }
+  entries.sort((a,b)=> b.date.localeCompare(a.date) || managerName(a.managerId).localeCompare(managerName(b.managerId)));
+
+  const items=[["today","Сегодня"],["yesterday","Вчера"],["week","Неделя"],["month","Месяц"]];
+  let mgrFilter="";
+  if(boss){
+    mgrFilter=`<label>Менеджер</label><select id="h-mgr" onchange="HIST_MGR=this.value;render()">
+      <option value="all"${HIST_MGR==='all'?' selected':''}>Все</option>
+      ${DB.config.managers.map(m=>`<option value="${m.id}"${HIST_MGR===m.id?' selected':''}>${escapeHtml(m.name)}</option>`).join("")}
+    </select>`;
+  }
+
+  let html=`<h2 class="screen-title">История</h2>${deviceNote()}
+    <div class="seg">${items.map(([k,l])=>`<button class="${HIST_PERIOD===k?'on':''}" onclick="HIST_PERIOD='${k}';render()">${l}</button>`).join("")}</div>
+    ${mgrFilter?`<div class="card">${mgrFilter}</div>`:""}`;
+
+  if(!entries.length){ html+=`<div class="empty-state">Записей за период нет</div>`; v.innerHTML=html; return; }
+
+  // сводка периода
+  const sold=salesSum(entries), pays=payCount(entries);
+  html+=`<div class="card"><div class="kpis">
+    <div class="kpi"><div class="k-lbl">Продажи</div><div class="k-val">${fmtMoney(sold)}</div></div>
+    <div class="kpi"><div class="k-lbl">Оплат</div><div class="k-val">${pays}</div></div>
+    <div class="kpi"><div class="k-lbl">Ср. чек</div><div class="k-val">${avgCheck(entries)>0?fmtMoney(avgCheck(entries)):'—'}</div></div>
+    <div class="kpi"><div class="k-lbl">На линии</div><div class="k-val">${sumField(entries,'sipuni.talkMin')} мин</div></div>
+  </div></div>`;
+
+  html+=entries.map(e=>{
+    const day=salesSum([e]);
+    const s=e.sipuni||{}, w=e.wa||{};
+    return `<div class="card" style="padding:12px">
+      <div class="lrow" style="border:0;padding:0">
+        <div><div class="l-main">${e.date}${boss?' · '+escapeHtml(managerName(e.managerId)):''}</div>
+        <div class="l-sub">Дозвоны: успешн. ${s.success||0} · дозв. ${s.dozvon||0} · недозв. ${s.nedozvon||0}</div></div>
+        <span class="pill ${day<0?'bad':'good'}">${fmtMoney(day)}</span>
+      </div>
+      <div class="mini" style="margin-top:8px">
+        <div><span>Разговоры</span><b>${s.talkMin||0} мин</b></div>
+        <div><span>Звонки</span><b>${s.calls||0}</b></div>
+        <div><span>WhatsApp</span><b>${w.calls||0} зв · ${w.timeMin||0} мин</b></div>
+        <div><span>Счета</span><b>${e.invoices||0}</b></div>
+        <div><span>Оплат</span><b>${payCount([e])}</b></div>
+        <div><span>Возвраты</span><b>${(e.sales||[]).filter(x=>x.isReturn).length}</b></div>
+      </div></div>`;
+  }).join("");
+  v.innerHTML=html;
+}
+
+/* ============================================================
+   ЭКРАН 6: МОЙ КАЛЕНДАРЬ (Менеджер)
+   ============================================================ */
+function renderCalendar(v){
+  const mid=SESSION.managerId;
+  const now=new Date();
+  const y=now.getFullYear(), mo=now.getMonth();
+  const monthName=["Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"][mo];
+  const first=new Date(y,mo,1);
+  let startDow=first.getDay(); startDow=(startDow===0)?6:startDow-1; // Пн=0
+  const dim=new Date(y,mo+1,0).getDate();
+  const off=DB.daysOff[mid]||[];
+
+  let cells="";
+  const dh=["Пн","Вт","Ср","Чт","Пт","Сб","Вс"];
+  dh.forEach(d=>cells+=`<div class="dh">${d}</div>`);
+  for(let i=0;i<startDow;i++) cells+=`<div class="d empty"></div>`;
+  for(let day=1;day<=dim;day++){
+    const ds=ymd(new Date(y,mo,day));
+    const d=parseYMD(ds);
+    let cls="d";
+    const hol=isHoliday(ds), we=isWeekend(d), pers=off.includes(ds);
+    if(pers) cls+=" pers";
+    else if(hol) cls+=" hol";
+    else if(we) cls+=" off";
+    if(ds===todayStr()) cls+=" today";
+    cells+=`<div class="${cls}" onclick="toggleDayOff('${ds}')">${day}</div>`;
+  }
+  const wd=workingDaysStats(mid);
+
+  v.innerHTML=`<h2 class="screen-title">Мой календарь</h2>${deviceNote()}
+    <div class="card"><h3>${monthName} ${y}</h3>
+      <div class="hint" style="margin-top:-4px">Тап по дню — отметить/снять личный выходной. Праздники РК учтены. Переносы выходных вносите вручную.</div>
+      <div class="cal">${cells}</div>
+      <div class="legend">
+        <span><i style="background:#f4f6fb"></i>Рабочий</span>
+        <span><i style="background:#f0f1f5"></i>Выходной</span>
+        <span><i style="background:#fdecea"></i>Праздник РК</span>
+        <span><i style="background:#fff3d6"></i>Мой выходной</span>
+      </div>
+    </div>
+    <div class="card"><div class="kpis">
+      <div class="kpi"><div class="k-lbl">Рабочих дней всего</div><div class="k-val">${wd.total}</div></div>
+      <div class="kpi"><div class="k-lbl">Осталось (с сегодня)</div><div class="k-val">${wd.remaining}</div></div>
+    </div></div>`;
+}
+function toggleDayOff(ds){
+  const mid=SESSION.managerId;
+  const arr=DB.daysOff[mid]||[];
+  const i=arr.indexOf(ds);
+  if(i>=0) arr.splice(i,1); else arr.push(ds);
+  DB.daysOff[mid]=arr; save(); render();
+}
+
+/* ============================================================
+   ЭКРАН 7: НАСТРОЙКИ (Админ) + демо-данные + PIN + менеджеры
+   ============================================================ */
+function renderSettings(v){
+  const mgrRows=DB.config.managers.map(m=>`
+    <div class="lrow"><input id="nm-${m.id}" value="${escapeHtml(m.name)}" style="margin:0">
+      <button class="x" onclick="removeManager('${m.id}')">×</button></div>`).join("");
+  v.innerHTML=`<h2 class="screen-title">Настройки</h2>${deviceNote()}
+    <div class="card"><h3>PIN-коды</h3>
+      <label>PIN Админа</label><input id="pin-admin" value="${DB.config.pinAdmin}">
+      <label>PIN РОПа</label><input id="pin-rop" value="${DB.config.pinRop}">
+      <button class="btn ghost" onclick="savePins()">Сохранить PIN</button>
+    </div>
+    <div class="card"><h3>Менеджеры</h3>${mgrRows}
+      <button class="btn ghost" onclick="addManager()">+ Добавить менеджера</button>
+      <button class="btn teal" onclick="saveManagers()">Сохранить имена</button>
+    </div>
+    <div class="card"><h3>Демо-данные</h3>
+      <div class="hint" style="margin-top:-4px">Создаст 3 менеджеров с планами и записи за текущий месяц (обе категории).</div>
+      <button class="btn" onclick="fillDemo()">✨ Заполнить демо-данными</button>
+      <button class="btn warn" onclick="wipeAll()">🗑 Очистить все данные</button>
+    </div>
+    <div class="small-note">Данные на этом устройстве (localStorage «salesapp_v1»).<br>Общая база и синхронизация с Сипуни — следующий этап.</div>`;
+}
+function savePins(){
+  DB.config.pinAdmin=(document.getElementById('pin-admin').value||"1111").trim();
+  DB.config.pinRop=(document.getElementById('pin-rop').value||"2222").trim();
+  save(); toast("PIN сохранены ✓");
+}
+function addManager(){
+  const id="m"+Date.now().toString(36);
+  DB.config.managers.push({id,name:"Новый менеджер"});
+  save(); render();
+}
+function removeManager(id){
+  if(DB.config.managers.length<=1){ toast("Нужен хотя бы один"); return; }
+  DB.config.managers=DB.config.managers.filter(m=>m.id!==id);
+  save(); render();
+}
+function saveManagers(){
+  DB.config.managers.forEach(m=>{
+    const el=document.getElementById('nm-'+m.id);
+    if(el) m.name=el.value.trim()||m.name;
+  });
+  save(); toast("Сохранено ✓");
+}
+function wipeAll(){
+  if(!confirm("Удалить все данные приложения?")) return;
+  DB=defaultData(); save(); render();
+}
+
+/* демо-данные */
+function fillDemo(){
+  const base=defaultData();
+  base.config.deptPlan=0;
+  base.plans={ m1:{monthPlan:3000000}, m2:{monthPlan:2500000}, m3:{monthPlan:2000000} };
+  const now=new Date(); const y=now.getFullYear(), mo=now.getMonth();
+  const today=todayStr();
+  const managers=["m1","m2","m3"];
+  const catPick=i=> i%3===0? "doctors":"patients";
+  // записи по прошедшим рабочим дням месяца (и сегодня)
+  const dates=monthDates(y,mo).filter(ds=> ds<=today);
+  let seed=7;
+  const rnd=()=>{ seed=(seed*9301+49297)%233280; return seed/233280; };
+  managers.forEach((mid,mi)=>{
+    dates.forEach(ds=>{
+      const d=parseYMD(ds);
+      if(isWeekend(d)||isHoliday(ds)) return;
+      if(rnd()<0.15) return; // иногда пропуск
+      const talk=20+Math.floor(rnd()*90);
+      const calls=15+Math.floor(rnd()*30);
+      const success=2+Math.floor(rnd()*6);
+      const dozvon=3+Math.floor(rnd()*8);
+      const nedozvon=Math.floor(rnd()*10);
+      const sales=[];
+      const nSales=Math.floor(rnd()*3); // 0..2 продажи в день
+      for(let k=0;k<nSales;k++){
+        const amount=(150+Math.floor(rnd()*40)*10)*1000; // 150k..550k
+        sales.push({amount, category: rnd()<0.35?"doctors":"patients", prepay: rnd()<0.5, isReturn:false});
+      }
+      if(rnd()<0.05 && sales.length===0){ // редкий возврат
+        sales.push({amount:180000, category:"patients", prepay:false, isReturn:true});
+      }
+      base.entries.push({
+        id:"e_"+mid+"_"+ds, date:ds, managerId:mid,
+        sipuni:{talkMin:talk,calls,success,dozvon,nedozvon},
+        wa:{calls:Math.floor(rnd()*8), timeMin:Math.floor(rnd()*40)},
+        invoices:Math.floor(rnd()*5),
+        sales
+      });
+    });
+  });
+  // пара обращений о помощи
+  base.help=[
+    {id:"h1",managerId:"m1",date:today,client:"Асель +7 701 …",note:"Сомневается по цене брекетов, нужна поддержка РОПа",resolved:false},
+    {id:"h2",managerId:"m3",date:today,client:"Клиника «Смайл»",note:"Хотят договор на обучение врачей",resolved:false}
+  ];
+  DB=base; save(); ROUTE=isBoss()?"dashboard":"cabinet"; render();
+  toast("Демо-данные загружены ✓");
+}
+
+/* ============================================================
+   ОБРАЩЕНИЕ «НУЖНА ПОМОЩЬ РОПа»
+   ============================================================ */
+function openHelp(){
+  showModal(`
+    <h3>🆘 Нужна помощь РОПа</h3>
+    <label>Клиент (имя / телефон)</label>
+    <input id="h-client" autofocus>
+    <label>Короткая заметка</label>
+    <input id="h-note" placeholder="Что нужно?">
+    <button class="btn warn" onclick="submitHelp()">Отправить РОПу</button>
+    <button class="btn ghost" onclick="closeModal()">Отмена</button>
+  `);
+}
+function submitHelp(){
+  const client=document.getElementById('h-client').value.trim();
+  const note=document.getElementById('h-note').value.trim();
+  if(!client && !note){ toast("Заполните поля"); return; }
+  DB.help.push({id:"h_"+Date.now().toString(36), managerId:SESSION.managerId, date:todayStr(), client, note, resolved:false});
+  save(); closeModal(); toast("Отправлено РОПу ✓");
+}
+
+/* ============================================================
+   UI ХЕЛПЕРЫ (модалка, тост, экранирование, плашка)
+   ============================================================ */
+function deviceNote(){
+  return `<div class="note"><span>ℹ️</span><span><b>Прототип.</b> Данные хранятся на этом устройстве. Общая база и авто-синхронизация с Сипуни будут подключены на следующем этапе.</span></div>`;
+}
+function showModal(inner){
+  closeModal();
+  const bg=document.createElement("div");
+  bg.className="modal-bg"; bg.id="modal-bg";
+  bg.onclick=e=>{ if(e.target===bg) closeModal(); };
+  bg.innerHTML=`<div class="modal">${inner}</div>`;
+  document.body.appendChild(bg);
+  const inp=bg.querySelector("input[autofocus]"); if(inp) setTimeout(()=>inp.focus(),50);
+}
+function closeModal(){ const m=document.getElementById("modal-bg"); if(m) m.remove(); }
+function toast(msg){
+  let t=document.getElementById("toast");
+  if(!t){ t=document.createElement("div"); t.id="toast";
+    t.style.cssText="position:fixed;left:50%;bottom:96px;transform:translateX(-50%);background:#1e2430;color:#fff;padding:11px 18px;border-radius:12px;font-size:14px;font-weight:600;z-index:100;box-shadow:0 6px 20px rgba(0,0,0,.3);opacity:0;transition:opacity .2s";
+    document.body.appendChild(t); }
+  t.textContent=msg; t.style.opacity="1";
+  clearTimeout(t._h); t._h=setTimeout(()=>t.style.opacity="0",1600);
+}
+function escapeHtml(s){ return String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+/* старт */
+render();
+</script>
