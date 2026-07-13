@@ -1,7 +1,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Отдел продаж</title>
-<!-- v6-month-rating-rename -->
+<!-- v7-payroll-payments -->
 <!--
   Отдел продаж — мини-приложение (прототип, mobile-first, стиль Telegram mini-app)
   Автономно: только vanilla JS + CSS, без внешних библиотек/CDN/шрифтов/картинок.
@@ -235,7 +235,8 @@ function defaultData(){
     plans:{},              // { managerId:{monthPlan} }
     entries:[],            // записи по дням
     help:[],               // обращения "нужна помощь руководителя"
-    daysOff:{}             // { managerId:['YYYY-MM-DD',...] }
+    daysOff:{},            // { managerId:['YYYY-MM-DD',...] }
+    bonus:{}               // { managerId:{ 'YYYY-MM': премия ₸ } } — ручная премия (РОП/руководитель)
   };
 }
 function load(){
@@ -247,6 +248,7 @@ function load(){
     const base = defaultData();
     d.config = Object.assign(base.config, d.config||{});
     d.plans = d.plans||{}; d.entries=d.entries||[]; d.help=d.help||[]; d.daysOff=d.daysOff||{};
+    d.bonus = d.bonus||{};
     return d;
   }catch(e){ return defaultData(); }
 }
@@ -336,12 +338,27 @@ function datesForPeriod(period){
 function entriesFor(managerId, dateSet){
   return DB.entries.filter(e=> e.managerId===managerId && dateSet.has(e.date));
 }
-// продажи: сумма без возвратов минус возвраты
+// продажи: сумма без возвратов минус возвраты (ВАЛОВАЯ, до комиссии банка)
 function salesSum(entries){
   let s=0;
   entries.forEach(e=> (e.sales||[]).forEach(x=>{
     if(x.isReturn) s -= Number(x.amount)||0; else s += Number(x.amount)||0;
   }));
+  return s;
+}
+/* --- Способ оплаты и комиссия банка/эквайринга (вычитается из суммы -> нетто) --- */
+const PAY_COMMISSION = {plain:0, kaspi24:0.155, kaspi12:0.15, robokassa:0.035};
+const PAY_LABEL = {plain:"Обычная", kaspi24:"Каспи рассрочка 0024", kaspi12:"Каспи рассрочка 0012", robokassa:"Робокасса"};
+// нетто одной продажи (после комиссии); возврат остаётся отрицательным
+function saleNet(sale){
+  const pay=(sale&&sale.pay)||'plain';
+  const comm=PAY_COMMISSION[pay]!=null? PAY_COMMISSION[pay] : 0;
+  return (sale&&sale.isReturn?-1:1) * (Number(sale&&sale.amount)||0) * (1-comm);
+}
+// нетто-сумма по записям с необязательным фильтром продаж
+function netSum(entries, filterFn){
+  let s=0;
+  entries.forEach(e=> (e.sales||[]).forEach(x=>{ if(!filterFn || filterFn(x)) s+=saleNet(x); }));
   return s;
 }
 // количество оплат (продажа с isReturn=false)
@@ -366,7 +383,93 @@ function categorySplit(entries){
   }));
   return {pat,doc};
 }
-function managerPlan(managerId){ return Number((DB.plans[managerId]||{}).monthPlan)||0; }
+// План по умолчанию для каждого менеджера = 5 000 000 ₸ (минимум)
+const DEFAULT_PLAN = 5000000;
+function managerPlan(managerId){
+  const v=Number((DB.plans[managerId]||{}).monthPlan);
+  return v>0? v : DEFAULT_PLAN;
+}
+/* --- Премия (ручная, за месяц) --- */
+function managerBonus(managerId, monthStr){ return Number(((DB.bonus||{})[managerId]||{})[monthStr])||0; }
+// число рабочих дней месяца, по которым есть отчёт (запись) менеджера
+function reportDaysCount(managerId, monthStr){
+  const workSet=new Set(monthDatesStr(monthStr).filter(ds=>isWorkingDay(ds, managerId)));
+  const days=new Set();
+  DB.entries.forEach(e=>{ if(e.managerId===managerId && workSet.has(e.date)) days.add(e.date); });
+  return days.size;
+}
+// ставка % за предоплаты с вебинара по нетто-сумме P
+function prepayTierRate(P){ if(P<5000000) return 0.05; if(P<7000000) return 0.06; return 0.08; }
+// Доход менеджера за месяц (все проценты — от НЕТТО, после комиссии банка)
+function managerIncome(managerId, monthStr){
+  monthStr = monthStr || SEL_MONTH;
+  const ent = entriesFor(managerId, new Set(monthDatesStr(monthStr)));
+  const reportDays = reportDaysCount(managerId, monthStr);
+  const oklad = reportDays>=21 ? 50000 : 0;
+  // Предоплаты с вебинара: пациенты + предоплата
+  const P = netSum(ent, x=> x.category!=="doctors" && x.prepay);
+  const prepayRate = prepayTierRate(P);
+  const commPrepay = prepayRate * P;
+  // Не-предоплаты: пациенты без предоплаты — 12%
+  const nonPre = netSum(ent, x=> x.category!=="doctors" && !x.prepay);
+  const commNonPre = 0.12 * nonPre;
+  // Врачи — 6%
+  const docs = netSum(ent, x=> x.category==="doctors");
+  const commDoc = 0.06 * docs;
+  const bonus = managerBonus(managerId, monthStr);
+  const total = oklad + commPrepay + commNonPre + commDoc + bonus;
+  return {reportDays, oklad, P, prepayRate, commPrepay, nonPre, commNonPre, docs, commDoc, bonus, total};
+}
+// Карточка «Мой доход» (кабинет менеджера) — подробная разбивка, нетто
+function incomeCardHTML(managerId, monthStr){
+  const inc=managerIncome(managerId, monthStr);
+  const okladLbl = inc.oklad>0
+    ? `Оклад <span class="pill good">отчётов: ${inc.reportDays} дн.</span>`
+    : `Оклад <span class="pill bad">мало отчётов: ${inc.reportDays}/21</span>`;
+  return `<div class="card"><h3>💵 Мой доход за ${escapeHtml(monthLabel(monthStr))}</h3>
+    <div class="mini" style="grid-template-columns:1fr;gap:9px 12px">
+      <div><span>${okladLbl}</span><b>${fmtMoney(inc.oklad)}</b></div>
+      <div><span>Предоплаты с вебинара · ${Math.round(inc.prepayRate*100)}% (нетто ${fmtMoney(inc.P)})</span><b>${fmtMoney(inc.commPrepay)}</b></div>
+      <div><span>Не-предоплаты · 12% (нетто ${fmtMoney(inc.nonPre)})</span><b>${fmtMoney(inc.commNonPre)}</b></div>
+      <div><span>Врачи · 6% (нетто ${fmtMoney(inc.docs)})</span><b>${fmtMoney(inc.commDoc)}</b></div>
+      <div><span>Премия</span><b>${fmtMoney(inc.bonus)}</b></div>
+    </div>
+    <div class="divider"></div>
+    <div class="addbar"><b>ИТОГО доход:</b><span class="tot-strong">${fmtMoney(inc.total)}</span></div>
+    <div class="hint" style="margin-top:8px">Проценты считаются от нетто-суммы (после комиссии банка/эквайринга). Оклад 50 000 ₸ — если есть отчёты в 21+ рабочий день месяца.</div>
+  </div>`;
+}
+// Блок «Доход / Зарплата» для руководителя (Рейтинг) — с полем «Премия» на каждого
+function salarySectionHTML(monthStr){
+  let h=`<div class="card"><h3>💵 Доход / Зарплата · ${escapeHtml(monthLabel(monthStr))}</h3>
+    <div class="hint" style="margin-top:-4px;margin-bottom:6px">Проценты — от нетто (после комиссии банка). Впишите «Премию» — сохраняется сразу.</div>`;
+  DB.config.managers.forEach(m=>{
+    const inc=managerIncome(m.id, monthStr);
+    h+=`<div style="padding:11px 0;border-bottom:1px solid var(--line)">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <div class="l-main">${escapeHtml(m.name)} <span class="pill ${inc.oklad>0?'good':'bad'}" style="margin-left:2px">оклад ${inc.oklad>0?fmtMoney(inc.oklad):'0'}</span></div>
+        <div class="tot-strong" style="font-size:17px">${fmtMoney(inc.total)}</div>
+      </div>
+      <div class="mini" style="grid-template-columns:1fr 1fr;margin-top:6px">
+        <div><span>Предопл. ${Math.round(inc.prepayRate*100)}%</span><b>${fmtMoney(inc.commPrepay)}</b></div>
+        <div><span>Не-предопл. 12%</span><b>${fmtMoney(inc.commNonPre)}</b></div>
+        <div><span>Врачи 6%</span><b>${fmtMoney(inc.commDoc)}</b></div>
+        <div><span>Отчётов (раб. дн.)</span><b>${inc.reportDays}</b></div>
+      </div>
+      <label style="margin-top:8px">Премия за ${escapeHtml(monthLabel(monthStr))}, ₸</label>
+      <input type="number" min="0" inputmode="numeric" value="${inc.bonus||''}" placeholder="0" onchange="setBonus('${m.id}', this.value)">
+    </div>`;
+  });
+  h+=`</div>`;
+  return h;
+}
+function setBonus(managerId, val){
+  const amt=Number(val)||0;
+  if(!DB.bonus) DB.bonus={};
+  if(!DB.bonus[managerId]) DB.bonus[managerId]={};
+  DB.bonus[managerId][SEL_MONTH]=amt;
+  save(); toast("Премия сохранена ✓"); render();
+}
 function deptPlanValue(){
   if(Number(DB.config.deptPlan)>0) return Number(DB.config.deptPlan);
   return DB.config.managers.reduce((s,m)=> s+managerPlan(m.id), 0);
@@ -690,12 +793,14 @@ function renderDashboard(v){
   const deptPlan=deptPlanValue();
 
   // Сбор по отделу за период и за месяц
-  let deptSoldPeriod=0, deptSoldMonth=0, periodEntries=[];
+  let deptSoldPeriod=0, deptSoldMonth=0, deptNetMonth=0, periodEntries=[];
   DB.config.managers.forEach(m=>{
     const ep=entriesFor(m.id, dates);
     periodEntries=periodEntries.concat(ep);
     deptSoldPeriod += salesSum(ep);
-    deptSoldMonth  += salesSum(entriesFor(m.id, monthSet));
+    const em=entriesFor(m.id, monthSet);
+    deptSoldMonth  += salesSum(em);
+    deptNetMonth   += netSum(em);
   });
   const deptPct=pct(deptSoldMonth, deptPlan);
   const remain=Math.max(0, deptPlan-deptSoldMonth);
@@ -743,6 +848,7 @@ function renderDashboard(v){
       <div class="kpi"><div class="k-lbl">Осталось до плана</div><div class="k-val">${fmtMoney(remain)}</div></div>
     </div>
     <div class="bar ${deptPct<70?'warn':''}"><span style="width:${Math.min(100,deptPct)}%"></span></div>
+    <div class="hint" style="margin-top:8px">Нетто-выручка отдела за месяц (после комиссии банка): <b>${fmtMoney(deptNetMonth)}</b></div>
   </div>`;
 
   // 3) Лидер месяца (по продажам)
@@ -854,6 +960,8 @@ function renderCabinet(v){
       <div class="hint" style="margin-top:6px;text-align:right">${fmtMoney(sold)} из ${fmtMoney(plan)} · осталось ${fmtMoney(remain)}</div>
     </div>
 
+    ${incomeCardHTML(mid, SEL_MONTH)}
+
     <div class="card"><h3>📊 Продажи по дням (месяц)</h3>
       ${monthBarSVG(mid)}
     </div>
@@ -894,9 +1002,10 @@ function renderEntry(v){
   const d=ENTRY_DRAFT;
   let salesList = (d.sales||[]).map((s,i)=>{
     const tag = s.isReturn? `<span class="tag ret">возврат</span>` : (s.category==="doctors"? `<span class="tag doc">врачи</span>`:`<span class="tag pat">пациенты</span>`);
+    const payTag = (s.pay && s.pay!=="plain")? `<span class="tag">${escapeHtml(PAY_LABEL[s.pay]||s.pay)}</span>` : "";
     return `<div class="lrow"><div>
       <div class="l-main">${s.isReturn?"−":""}${fmtMoney(s.amount)}</div>
-      <div class="l-sub">${tag} ${s.prepay?'<span class="tag">предоплата</span>':''}</div>
+      <div class="l-sub">${tag} ${s.prepay?'<span class="tag">предоплата</span>':''} ${payTag}</div>
     </div><button class="x" onclick="delSale(${i})">×</button></div>`;
   }).join("");
   if(!salesList) salesList=`<div class="empty-state">Продаж пока нет</div>`;
@@ -976,14 +1085,22 @@ function saveEntry(){
 function delSale(i){ pullForm(); ENTRY_DRAFT.sales.splice(i,1); render(); }
 
 /* форма добавления продажи (модалка) */
-let SALE_TMP={amount:0,category:"patients",prepay:false,isReturn:false};
+let SALE_TMP={amount:0,category:"patients",prepay:false,isReturn:false,pay:"plain"};
 function openSaleForm(){
   pullForm();
-  SALE_TMP={amount:0,category:"patients",prepay:false,isReturn:false};
+  SALE_TMP={amount:0,category:"patients",prepay:false,isReturn:false,pay:"plain"};
   showModal(`
     <h3>Добавить продажу</h3>
     <label>Сумма, ₸</label>
-    <input type="number" min="0" id="s-amount" inputmode="numeric" autofocus>
+    <input type="number" min="0" id="s-amount" inputmode="numeric" autofocus oninput="updateSaleNetHint()">
+    <label>Способ оплаты</label>
+    <select id="s-pay" onchange="updateSaleNetHint()">
+      <option value="plain">Обычная (0%)</option>
+      <option value="kaspi24">Каспи рассрочка 0024 (−15,5%)</option>
+      <option value="kaspi12">Каспи рассрочка 0012 (−15%)</option>
+      <option value="robokassa">Робокасса (−3,5%)</option>
+    </select>
+    <div class="hint" id="s-net-hint">Комиссия банка вычитается из суммы (нетто идёт в расчёт дохода).</div>
     <label>Категория</label>
     <div class="seg-2" id="s-cat">
       <button class="on" data-v="patients" onclick="segPick('s-cat',this)">Пациенты</button>
@@ -1007,13 +1124,24 @@ function segPick(group, btn){
   document.querySelectorAll('#'+group+' button').forEach(b=>b.classList.remove('on'));
   btn.classList.add('on');
 }
+function updateSaleNetHint(){
+  const el=document.getElementById('s-net-hint'); if(!el) return;
+  const amt=Number((document.getElementById('s-amount')||{}).value)||0;
+  const pay=(document.getElementById('s-pay')||{}).value||'plain';
+  const comm=PAY_COMMISSION[pay]||0;
+  if(amt<=0){ el.textContent="Комиссия банка вычитается из суммы (нетто идёт в расчёт дохода)."; return; }
+  el.textContent = comm>0
+    ? "Нетто к зачёту: "+fmtMoney(amt*(1-comm))+" (комиссия −"+String(comm*100).replace(".",",")+"%)"
+    : "Нетто к зачёту: "+fmtMoney(amt)+" (без комиссии)";
+}
 function addSale(){
   const amount=Number(document.getElementById('s-amount').value)||0;
   if(amount<=0){ toast("Введите сумму"); return; }
   const cat=document.querySelector('#s-cat button.on').dataset.v;
   const prepay=document.querySelector('#s-pre button.on').dataset.v==="1";
   const isReturn=document.querySelector('#s-ret button.on').dataset.v==="1";
-  ENTRY_DRAFT.sales.push({amount, category:cat, prepay, isReturn});
+  const pay=(document.getElementById('s-pay')||{}).value||'plain';
+  ENTRY_DRAFT.sales.push({amount, category:cat, prepay, isReturn, pay});
   closeModal(); render();
 }
 
@@ -1104,6 +1232,10 @@ function renderRating(v){
     });
   }
   html+=`</div>`;
+
+  // Доход / Зарплата за выбранный месяц + поле «Премия» на каждого менеджера
+  html+=salarySectionHTML(SEL_MONTH);
+
   v.innerHTML=html;
 }
 
@@ -1294,7 +1426,10 @@ function wipeAll(){
 function fillDemo(){
   const base=defaultData();
   base.config.deptPlan=0;
-  base.plans={ m1:{monthPlan:3000000}, m2:{monthPlan:2500000}, m3:{monthPlan:2000000} };
+  // план по умолчанию для каждого — 5 000 000 ₸
+  base.plans={ m1:{monthPlan:5000000}, m2:{monthPlan:5000000}, m3:{monthPlan:5000000} };
+  base.bonus={ m1:{}, m2:{}, m3:{} };
+  const PAY_POOL=["plain","plain","plain","kaspi24","kaspi12","robokassa"];
   const now=new Date(); const y=now.getFullYear(), mo=now.getMonth();
   const today=todayStr();
   const managers=["m1","m2","m3"];
@@ -1318,7 +1453,8 @@ function fillDemo(){
       for(let k=0;k<nSales;k++){
         const amount=(150+Math.floor(rnd()*40)*10)*1000; // 150k..550k
         // чередуем категории, чтобы обе были представлены; часть — предоплаты
-        sales.push({amount, category: rnd()<0.4?"doctors":"patients", prepay: rnd()<0.5, isReturn:false});
+        const pay=PAY_POOL[Math.floor(rnd()*PAY_POOL.length)]; // разные способы оплаты
+        sales.push({amount, category: rnd()<0.4?"doctors":"patients", prepay: rnd()<0.5, isReturn:false, pay});
       }
       base.entries.push({
         id:"e_"+mid+"_"+ds, date:ds, managerId:mid,
@@ -1337,10 +1473,12 @@ function fillDemo(){
     if(!e){ e={id:"e_"+mid+"_"+ds, date:ds, managerId:mid,
       sipuni:{talkMin:30,calls:18,success:3,dozvon:5,nedozvon:4}, wa:{calls:2,timeMin:12}, invoices:2, sales:[]};
       base.entries.push(e); }
-    e.sales.push({amount, category:cat, prepay:false, isReturn:true});
+    e.sales.push({amount, category:cat, prepay:false, isReturn:true, pay:"plain"});
   }
   injectReturn("m1", Math.min(9, now.getDate()), 180000, "patients");
   injectReturn("m2", Math.min(16, now.getDate()), 250000, "doctors");
+  // демо-премия текущего месяца (чтобы был виден расчёт «Премия»)
+  base.bonus.m1[curMonthStr()]=50000;
   // пара обращений о помощи
   base.help=[
     {id:"h1",managerId:"m1",date:today,client:"Асель +7 701 …",note:"Сомневается по цене брекетов, нужна поддержка руководителя",resolved:false},
