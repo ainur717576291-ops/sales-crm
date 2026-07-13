@@ -10,10 +10,17 @@
 -->
 <style>
 :root{
-  --bg:#eef1f7; --card:#ffffff; --ink:#1e2430; --muted:#75809a;
-  --indigo:#5b6ef5; --indigo-d:#4451d6; --teal:#12b3a6; --teal-d:#0e9488;
-  --line:#e5e9f2; --good:#12b3a6; --warn:#e5a13a; --bad:#e5544b;
-  --chip:#f2f4fb; --shadow:0 6px 18px rgba(40,50,90,.08);
+  /* --- DARK BI THEME --- */
+  --bg:#0e1524; --bg2:#0b111d; --card:#141c2e; --card2:#1b2540; --card3:#212d4d;
+  --ink:#eaf0fb; --ink2:#c2ccdf; --muted:#8592ae;
+  --line:rgba(255,255,255,.08); --line2:rgba(255,255,255,.14);
+  /* validated categorical hues (dark surface): manager & category colors */
+  --blue:#3987e5; --aqua:#199e70; --yellow:#c98500; --violet:#9085e9; --red:#e66767; --orange:#d95926;
+  /* status (gauge zones / states) */
+  --good:#22c39a; --warn:#fab219; --bad:#e5544b;
+  /* legacy aliases so older var() refs still resolve on dark */
+  --indigo:#3987e5; --indigo-d:#6aa6ee; --teal:#199e70; --teal-d:#22c39a;
+  --chip:#1b2540; --shadow:0 10px 30px rgba(0,0,0,.45);
   --radius:16px;
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -26,86 +33,104 @@ body{
 #app{max-width:520px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;background:var(--bg)}
 header.topbar{
   position:sticky;top:0;z-index:20;
-  background:linear-gradient(135deg,var(--indigo),var(--teal));
+  background:linear-gradient(135deg,#1c2b52,#111c34);
   color:#fff;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;
-  box-shadow:0 2px 12px rgba(40,50,90,.18);
+  border-bottom:1px solid var(--line2);box-shadow:0 6px 20px rgba(0,0,0,.4);
 }
-header.topbar .ttl{font-weight:700;font-size:18px;letter-spacing:.2px}
-header.topbar .sub{font-size:12px;opacity:.9;margin-top:1px}
+header.topbar .ttl{font-weight:800;font-size:18px;letter-spacing:.2px}
+header.topbar .sub{font-size:12px;opacity:.82;margin-top:1px}
 header.topbar button.logout{
-  background:rgba(255,255,255,.18);border:0;color:#fff;padding:7px 12px;border-radius:10px;
+  background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.16);color:#fff;padding:7px 12px;border-radius:10px;
   font-size:13px;font-weight:600;
 }
-main{flex:1;padding:14px 14px 90px 14px}
+main{flex:1;padding:14px 14px 92px 14px}
 .note{
-  background:#fff8e8;border:1px solid #f2e2b8;color:#8a6d1f;border-radius:12px;
+  background:rgba(58,135,229,.10);border:1px solid rgba(58,135,229,.28);color:#aac6f0;border-radius:12px;
   padding:9px 12px;font-size:12.5px;margin-bottom:12px;display:flex;gap:8px;align-items:flex-start;
 }
-.note b{color:#7a5f16}
-.card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:14px;margin-bottom:12px}
-.card h3{margin:0 0 10px;font-size:15px}
+.note b{color:#dbe8fb}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:14px;margin-bottom:12px}
+.card h3{margin:0 0 10px;font-size:15px;color:var(--ink)}
 .row{display:flex;gap:10px}
 .row>*{flex:1}
-h2.screen-title{font-size:20px;margin:2px 0 12px}
+h2.screen-title{font-size:20px;margin:2px 0 12px;color:var(--ink);font-weight:800}
 label{display:block;font-size:13px;color:var(--muted);margin:10px 0 4px;font-weight:600}
 input,select{
-  width:100%;padding:12px;border:1px solid var(--line);border-radius:12px;font-size:16px;
-  background:#fbfcff;color:var(--ink);outline:none;
+  width:100%;padding:12px;border:1px solid var(--line2);border-radius:12px;font-size:16px;
+  background:var(--bg2);color:var(--ink);outline:none;
 }
-input:focus,select:focus{border-color:var(--indigo);background:#fff}
+select{appearance:none}
+input:focus,select:focus{border-color:var(--blue);background:#0f1830}
+input::placeholder{color:#5c6987}
 .hint{font-size:11.5px;color:var(--muted);margin-top:3px}
 button{cursor:pointer;font-family:inherit}
 .btn{
   display:block;width:100%;padding:14px;border:0;border-radius:14px;font-size:16px;font-weight:700;
-  background:var(--indigo);color:#fff;margin-top:10px;box-shadow:var(--shadow);
+  background:var(--blue);color:#fff;margin-top:10px;box-shadow:0 8px 20px rgba(57,135,229,.28);
 }
 .btn:active{transform:translateY(1px)}
-.btn.teal{background:var(--teal)}
-.btn.ghost{background:#eef1fb;color:var(--indigo)}
-.btn.warn{background:#fdeceb;color:var(--bad)}
+.btn.teal{background:var(--aqua);box-shadow:0 8px 20px rgba(25,158,112,.28)}
+.btn.ghost{background:var(--card2);color:#bcd0f2;border:1px solid var(--line2);box-shadow:none}
+.btn.warn{background:rgba(229,84,75,.14);color:#ff8c85;border:1px solid rgba(229,84,75,.3);box-shadow:none}
 .btn.sm{padding:9px 12px;font-size:13px;width:auto;margin:0;display:inline-block}
-.pill{display:inline-block;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:700;background:var(--chip);color:var(--muted)}
-.pill.good{background:#e2f7f4;color:var(--teal-d)}
-.pill.bad{background:#fdecea;color:var(--bad)}
-.pill.warn{background:#fdf3e2;color:#a9781f}
+.pill{display:inline-block;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:700;background:var(--chip);color:var(--ink2);border:1px solid var(--line)}
+.pill.good{background:rgba(34,195,154,.16);color:var(--good);border-color:rgba(34,195,154,.32)}
+.pill.bad{background:rgba(229,84,75,.16);color:#ff8c85;border-color:rgba(229,84,75,.32)}
+.pill.warn{background:rgba(250,178,25,.16);color:var(--warn);border-color:rgba(250,178,25,.32)}
 /* period toggle */
-.seg{display:flex;background:#e7ebf6;border-radius:12px;padding:4px;gap:4px;margin-bottom:12px}
+.seg{display:flex;background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:4px;gap:4px;margin-bottom:12px}
 .seg button{flex:1;border:0;background:transparent;padding:9px 4px;border-radius:9px;font-size:13px;font-weight:600;color:var(--muted)}
-.seg button.on{background:#fff;color:var(--indigo);box-shadow:var(--shadow)}
+.seg button.on{background:var(--card3);color:#fff;box-shadow:0 2px 8px rgba(0,0,0,.35)}
 /* KPI grid */
 .kpis{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.kpi{background:var(--card);border-radius:14px;padding:12px;box-shadow:var(--shadow)}
-.kpi .k-lbl{font-size:12px;color:var(--muted);font-weight:600}
-.kpi .k-val{font-size:20px;font-weight:800;margin-top:2px}
+.kpi-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px}
+.kpi{background:var(--card2);border:1px solid var(--line);border-radius:14px;padding:12px}
+.kpi .k-lbl{font-size:11.5px;color:var(--muted);font-weight:600;line-height:1.25}
+.kpi .k-val{font-size:20px;font-weight:800;margin-top:4px;letter-spacing:-.3px}
+.kpi.big .k-val{font-size:19px}
+.kpi-grid .k-val{font-size:18px}
+.kpi-grid .kpi.big .k-val{font-size:19px}
 .kpi .k-sub{font-size:11.5px;color:var(--muted);margin-top:2px}
+.kpi .k-delta{font-size:12px;font-weight:800;margin-top:3px}
+.k-delta.up{color:var(--good)} .k-delta.down{color:#ff8c85}
 /* progress bar */
-.bar{height:10px;background:#eceff7;border-radius:999px;overflow:hidden;margin-top:8px}
-.bar>span{display:block;height:100%;background:linear-gradient(90deg,var(--indigo),var(--teal));border-radius:999px}
-.bar.warn>span{background:linear-gradient(90deg,#e5a13a,#e5544b)}
-.mgr-card{background:var(--card);border-radius:14px;box-shadow:var(--shadow);padding:13px;margin-bottom:10px}
+.bar{height:10px;background:rgba(255,255,255,.07);border-radius:999px;overflow:hidden;margin-top:8px}
+.bar>span{display:block;height:100%;background:linear-gradient(90deg,var(--blue),var(--aqua));border-radius:999px}
+.bar.warn>span{background:linear-gradient(90deg,var(--warn),var(--bad))}
+.mgr-card{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:13px;margin-bottom:10px}
 .mgr-head{display:flex;align-items:center;gap:12px}
-.mgr-ring{flex:none;line-height:0}
+.mgr-ring{flex:none;line-height:0;width:118px}
 .gauge-legend{display:flex;justify-content:center;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:2px}
 .gauge-legend b{font-size:15px;line-height:1}
-.mgr-card .top{display:flex;justify-content:space-between;align-items:center}
-.mgr-card .nm{font-weight:800;font-size:15px}
+.mgr-card .top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.mgr-card .nm{font-weight:800;font-size:15px;display:flex;align-items:center;gap:7px}
+.mgr-card .nm i{width:10px;height:10px;border-radius:3px;flex:none;display:inline-block}
 .mini{display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;margin-top:10px;font-size:12.5px}
 .mini div span{color:var(--muted)}
-.mini div b{float:right;font-weight:700}
+.mini div b{float:right;font-weight:700;color:var(--ink)}
+/* leader / trophy tile */
+.leader{background:linear-gradient(135deg,#2a2145,#1a2350);border:1px solid rgba(144,133,233,.35);
+  border-radius:16px;padding:16px;margin-bottom:12px;display:flex;align-items:center;gap:14px;box-shadow:var(--shadow)}
+.leader .tro{font-size:40px;line-height:1;filter:drop-shadow(0 4px 10px rgba(0,0,0,.4))}
+.leader .l-cap{font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;color:#b9aef0;font-weight:700}
+.leader .l-nm{font-size:18px;font-weight:800;margin-top:2px;color:#fff}
+.leader .l-amt{font-size:24px;font-weight:800;color:#ffd34d;margin-top:2px;letter-spacing:-.4px}
+.leader .l-sub{font-size:11.5px;color:var(--muted);margin-top:1px}
+.chart-cap{font-size:11px;color:var(--muted);margin:0 0 2px}
 /* role gate */
 .gate{padding:24px 16px}
-.gate .big{font-size:26px;font-weight:800;text-align:center;margin:20px 0 4px}
+.gate .big{font-size:26px;font-weight:800;text-align:center;margin:20px 0 4px;color:var(--ink)}
 .gate .who{text-align:center;color:var(--muted);margin-bottom:24px}
 .role-btn{
-  display:flex;align-items:center;gap:14px;width:100%;padding:18px;border:0;border-radius:16px;
-  background:#fff;box-shadow:var(--shadow);margin-bottom:12px;font-size:17px;font-weight:700;color:var(--ink);text-align:left;
+  display:flex;align-items:center;gap:14px;width:100%;padding:18px;border:1px solid var(--line2);border-radius:16px;
+  background:var(--card);box-shadow:var(--shadow);margin-bottom:12px;font-size:17px;font-weight:700;color:var(--ink);text-align:left;
 }
 .role-btn .emo{font-size:26px}
 .role-btn .arw{margin-left:auto;color:var(--muted)}
 /* nav */
 nav.tabbar{
   position:fixed;bottom:0;left:0;right:0;max-width:520px;margin:0 auto;
-  background:#fff;border-top:1px solid var(--line);display:flex;z-index:30;
+  background:rgba(17,24,42,.96);backdrop-filter:blur(8px);border-top:1px solid var(--line2);display:flex;z-index:30;
   padding-bottom:env(safe-area-inset-bottom,0);
 }
 nav.tabbar button{
@@ -113,44 +138,45 @@ nav.tabbar button{
   display:flex;flex-direction:column;align-items:center;gap:3px;font-weight:600;
 }
 nav.tabbar button .ic{font-size:20px}
-nav.tabbar button.on{color:var(--indigo)}
+nav.tabbar button.on{color:#6aa6ee}
 /* list rows */
 .lrow{display:flex;justify-content:space-between;align-items:center;padding:11px 0;border-bottom:1px solid var(--line);gap:10px}
 .lrow:last-child{border-bottom:0}
-.lrow .l-main{font-weight:600;font-size:14px}
+.lrow .l-main{font-weight:600;font-size:14px;color:var(--ink)}
 .lrow .l-sub{font-size:12px;color:var(--muted);margin-top:2px}
-.tag{font-size:10.5px;padding:2px 7px;border-radius:6px;font-weight:700;background:var(--chip);color:var(--muted)}
-.tag.pat{background:#e8ecfd;color:var(--indigo-d)}
-.tag.doc{background:#e2f7f4;color:var(--teal-d)}
-.tag.ret{background:#fdecea;color:var(--bad)}
-.x{border:0;background:#fdecea;color:var(--bad);border-radius:9px;width:34px;height:34px;font-size:16px;font-weight:800;flex:none}
+.tag{font-size:10.5px;padding:2px 7px;border-radius:6px;font-weight:700;background:var(--chip);color:var(--ink2)}
+.tag.pat{background:rgba(57,135,229,.18);color:#8fbcf3}
+.tag.doc{background:rgba(25,158,112,.18);color:#5fd3ab}
+.tag.ret{background:rgba(229,84,75,.18);color:#ff8c85}
+.x{border:0;background:rgba(229,84,75,.16);color:#ff8c85;border-radius:9px;width:34px;height:34px;font-size:16px;font-weight:800;flex:none}
 /* modal */
-.modal-bg{position:fixed;inset:0;background:rgba(20,26,40,.45);z-index:50;display:flex;align-items:flex-end;justify-content:center}
-.modal{background:#fff;width:100%;max-width:520px;border-radius:20px 20px 0 0;padding:18px 16px 26px;box-shadow:0 -8px 30px rgba(0,0,0,.2)}
-.modal h3{margin:2px 0 6px;font-size:17px}
+.modal-bg{position:fixed;inset:0;background:rgba(4,8,16,.62);z-index:50;display:flex;align-items:flex-end;justify-content:center}
+.modal{background:var(--card);width:100%;max-width:520px;border:1px solid var(--line2);border-bottom:0;border-radius:20px 20px 0 0;padding:18px 16px 26px;box-shadow:0 -8px 40px rgba(0,0,0,.6)}
+.modal h3{margin:2px 0 6px;font-size:17px;color:var(--ink)}
 .seg-2{display:flex;gap:8px;margin-top:4px}
-.seg-2 button{flex:1;padding:11px;border:1px solid var(--line);background:#fbfcff;border-radius:12px;font-weight:700;color:var(--muted);font-size:14px}
-.seg-2 button.on{border-color:var(--indigo);background:#eef1fb;color:var(--indigo)}
+.seg-2 button{flex:1;padding:11px;border:1px solid var(--line2);background:var(--bg2);border-radius:12px;font-weight:700;color:var(--muted);font-size:14px}
+.seg-2 button.on{border-color:var(--blue);background:rgba(57,135,229,.16);color:#8fbcf3}
 /* calendar */
 .cal{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin-top:8px}
 .cal .dh{text-align:center;font-size:11px;color:var(--muted);font-weight:700;padding:4px 0}
-.cal .d{aspect-ratio:1;display:flex;align-items:center;justify-content:center;border-radius:10px;font-size:14px;font-weight:600;background:#f4f6fb;color:var(--ink)}
-.cal .d.off{background:#f0f1f5;color:#b7becd}   /* выходной/праздник */
-.cal .d.hol{background:#fdecea;color:var(--bad)} /* праздник РК */
-.cal .d.pers{background:#fff3d6;color:#a9781f}   /* личный выходной */
-.cal .d.today{outline:2px solid var(--indigo)}
+.cal .d{aspect-ratio:1;display:flex;align-items:center;justify-content:center;border-radius:10px;font-size:14px;font-weight:600;background:var(--card3);color:var(--ink)}
+.cal .d.off{background:rgba(255,255,255,.05);color:#5c6987}   /* выходной/праздник */
+.cal .d.hol{background:rgba(229,84,75,.20);color:#ff9a93}    /* праздник РК */
+.cal .d.pers{background:rgba(250,178,25,.20);color:#f6c85a}  /* личный выходной */
+.cal .d.today{outline:2px solid var(--blue)}
 .cal .d.empty{background:transparent}
 .legend{display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;font-size:11.5px;color:var(--muted)}
 .legend i{display:inline-block;width:12px;height:12px;border-radius:4px;margin-right:4px;vertical-align:-1px}
 .split{display:flex;gap:8px;margin-top:10px}
-.split .s-cat{flex:1;background:#f6f8fd;border-radius:12px;padding:10px;text-align:center}
-.split .s-cat .s-v{font-weight:800;font-size:16px}
+.split .s-cat{flex:1;background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:10px;text-align:center}
+.split .s-cat .s-v{font-weight:800;font-size:16px;color:var(--ink)}
 .split .s-cat .s-l{font-size:11.5px;color:var(--muted)}
+.split .s-cat .s-l i{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:4px;vertical-align:0}
 .empty-state{text-align:center;color:var(--muted);padding:24px 8px;font-size:14px}
 .small-note{font-size:11px;color:var(--muted);text-align:center;margin-top:18px}
 .divider{height:1px;background:var(--line);margin:12px 0}
 .addbar{display:flex;gap:8px;align-items:center;justify-content:space-between;margin-top:6px}
-.tot-strong{font-size:22px;font-weight:800}
+.tot-strong{font-size:22px;font-weight:800;color:var(--ink)}
 </style>
 
 <div id="app">
@@ -334,49 +360,59 @@ function workingDaysStats(managerId){
    ВИЗУАЛИЗАЦИИ (инлайновый SVG, без библиотек)
    ============================================================ */
 function clampNum(v,a,b){ return Math.max(a, Math.min(b, v)); }
-// цвет по зоне выполнения плана (status-цвета)
-function zoneColor(p){ if(p<50) return "#e5544b"; if(p<90) return "#e5a13a"; return "#12b3a6"; }
+// статус-цвет по выполнению плана (dark-safe: красный / жёлтый / зелёный)
+function zoneColor(p){ if(p<50) return "#e5544b"; if(p<90) return "#fab219"; return "#22c39a"; }
+// категориальная палитра менеджеров (validated на тёмном фоне, фиксированный порядок)
+const MGR_COLORS=["#3987e5","#199e70","#c98500","#9085e9","#e66767","#d95926"];
+function mgrColor(i){ return MGR_COLORS[i % MGR_COLORS.length]; }
+// категории продаж — единая пара во всём приложении
+const CAT_COLOR={patients:"#3987e5", doctors:"#199e70"};
 
-// Спидометр 0–150%: стрелка = «сейчас», синяя метка = «прогноз»
-function speedoSVG(curPct, forePct, opts){
-  opts=opts||{};
-  const W=240, H=176, cx=120, cy=120, R=100, thick=20, rMid=R-thick/2;
-  const a=v=>Math.PI*(1-clampNum(v,0,150)/150);       // 0%→π (лево), 150%→0 (право)
-  const pt=(v,r)=>{ const t=a(v); return [cx+r*Math.cos(t), cy-r*Math.sin(t)]; };
-  const arc=(v1,v2,r,color)=>{ const [x1,y1]=pt(v1,r), [x2,y2]=pt(v2,r);
-    return `<path d="M${x1.toFixed(1)} ${y1.toFixed(1)} A ${r} ${r} 0 0 0 ${x2.toFixed(1)} ${y2.toFixed(1)}" fill="none" stroke="${color}" stroke-width="${thick}"/>`; };
-  let s=`<svg viewBox="0 0 ${W} ${H}" width="100%" style="max-width:300px;display:block;margin:0 auto" role="img" aria-label="Выполнение плана ${Math.round(curPct)}%">`;
-  // цветные зоны: красная 0–50, жёлтая 50–90, зелёная 90–150
-  s+=arc(0,50,rMid,"#e5544b")+arc(50,90,rMid,"#e5a13a")+arc(90,150,rMid,"#12b3a6");
-  // засечки и подписи 0/50/100/150
-  [0,50,100,150].forEach(v=>{
-    const [x1,y1]=pt(v,R+1), [x2,y2]=pt(v,R-thick-1), [lx,ly]=pt(v,R+15);
-    s+=`<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="#fff" stroke-width="2"/>`;
-    s+=`<text x="${lx.toFixed(1)}" y="${(ly+3).toFixed(1)}" text-anchor="middle" font-size="10" fill="#75809a">${v}</text>`;
-  });
-  // метка прогноза (синяя чёрточка поперёк шкалы)
-  const [fx1,fy1]=pt(forePct,R+3), [fx2,fy2]=pt(forePct,R-thick-3);
-  s+=`<line x1="${fx1.toFixed(1)}" y1="${fy1.toFixed(1)}" x2="${fx2.toFixed(1)}" y2="${fy2.toFixed(1)}" stroke="#4451d6" stroke-width="4" stroke-linecap="round"/>`;
+// компактный формат денег для подписей на графиках
+function compactMoney(n){
+  n=Math.round(n||0); const sign=n<0?"−":""; n=Math.abs(n);
+  if(n>=1e6) return sign+(n/1e6).toFixed((n%1e6)===0?0:1).replace(".",",")+" млн";
+  if(n>=1e3) return sign+Math.round(n/1e3)+"К";
+  return sign+n;
+}
+function shortName(s){ s=String(s||""); const w=s.split(/\s+/)[0]; return w.length>9? w.slice(0,9)+"…" : (s.length>11? s.slice(0,11)+"…" : s); }
+
+// Чистый полукруглый гейдж выполнения плана (0–150%):
+// тонкая дуга с зонами красный→жёлтый→зелёный, тонкая стрелка «сейчас»,
+// светлая метка «прогноз» и большое % в центре. opts.size:'lg'(деф.)|'sm'.
+function gaugeSVG(curPct, forePct, opts){
+  opts=opts||{}; const big = opts.size!=="sm";
+  const maxV=150;
+  const cx = big?140:66, R = big?116:52, thick = big?15:8;
+  const cy = R + (big?14:9);
+  const W = cx*2, H = cy + (big?66:24), rMid = R - thick/2;
+  const a=v=>Math.PI*(1-clampNum(v,0,maxV)/maxV);
+  const pt=(v,r)=>[cx+r*Math.cos(a(v)), cy-r*Math.sin(a(v))];
+  const arc=(v1,v2,r,color,sw,cap)=>{ const [x1,y1]=pt(v1,r),[x2,y2]=pt(v2,r);
+    return `<path d="M${x1.toFixed(1)} ${y1.toFixed(1)} A ${r} ${r} 0 0 0 ${x2.toFixed(1)} ${y2.toFixed(1)}" fill="none" stroke="${color}" stroke-width="${sw}" stroke-linecap="${cap||'butt'}"/>`; };
+  const col=zoneColor(curPct);
+  let s=`<svg viewBox="0 0 ${W} ${H}" width="100%" style="max-width:${big?320:132}px;display:block;margin:0 auto" role="img" aria-label="Выполнение плана ${Math.round(curPct)}%">`;
+  // фоновая дорожка
+  s+=arc(0,maxV,rMid,"rgba(255,255,255,.08)",thick,"round");
+  // цветные зоны с 2%-зазором (2px-эффект белого между секторами)
+  s+=arc(0,48,rMid,"#e5544b",thick,"round");
+  s+=arc(52,88,rMid,"#fab219",thick,"butt");
+  s+=arc(92,maxV,rMid,"#22c39a",thick,"round");
+  // подписи шкалы (только для крупного)
+  if(big){ [0,50,100,150].forEach(v=>{ const [lx,ly]=pt(v,R+15);
+    s+=`<text x="${lx.toFixed(1)}" y="${(ly+3).toFixed(1)}" text-anchor="middle" font-size="10" fill="#8592ae">${v}</text>`; }); }
+  // метка «прогноз»
+  if(forePct!=null){ const [fx1,fy1]=pt(forePct,R+(big?2:1)), [fx2,fy2]=pt(forePct,R-thick-(big?2:1));
+    s+=`<line x1="${fx1.toFixed(1)}" y1="${fy1.toFixed(1)}" x2="${fx2.toFixed(1)}" y2="${fy2.toFixed(1)}" stroke="#eaf0fb" stroke-width="${big?4:3}" stroke-linecap="round"/>`; }
   // стрелка «сейчас»
-  const [nx,ny]=pt(curPct,R-thick-6);
-  s+=`<line x1="${cx}" y1="${cy}" x2="${nx.toFixed(1)}" y2="${ny.toFixed(1)}" stroke="#1e2430" stroke-width="4" stroke-linecap="round"/>`;
-  s+=`<circle cx="${cx}" cy="${cy}" r="8" fill="#1e2430"/>`;
-  // большое число выполнения
-  s+=`<text x="${cx}" y="${H-8}" text-anchor="middle" font-size="34" font-weight="800" fill="${zoneColor(curPct)}">${Math.round(curPct)}%</text>`;
+  const [nx,ny]=pt(curPct,R-thick-(big?8:4));
+  s+=`<line x1="${cx}" y1="${cy}" x2="${nx.toFixed(1)}" y2="${ny.toFixed(1)}" stroke="${col}" stroke-width="${big?4:2.5}" stroke-linecap="round"/>`;
+  s+=`<circle cx="${cx}" cy="${cy}" r="${big?7:4}" fill="${col}"/><circle cx="${cx}" cy="${cy}" r="${big?3:1.8}" fill="#141c2e"/>`;
+  // большое число
+  s+=`<text x="${cx}" y="${(cy+(big?44:19)).toFixed(1)}" text-anchor="middle" font-size="${big?38:17}" font-weight="800" fill="${col}">${Math.round(curPct)}%</text>`;
+  if(big) s+=`<text x="${cx}" y="${(cy+60).toFixed(1)}" text-anchor="middle" font-size="11" fill="#8592ae">выполнение плана</text>`;
   s+=`</svg>`;
   return s;
-}
-
-// Компактное кольцо выполнения (для карточки менеджера на дашборде)
-function ringSVG(pct){
-  const size=60, sw=8, r=(size-sw)/2, c=2*Math.PI*r, cxy=size/2;
-  const frac=clampNum(pct,0,150)/150, off=c*(1-frac), col=zoneColor(pct);
-  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" role="img" aria-label="${Math.round(pct)}% плана">
-    <circle cx="${cxy}" cy="${cxy}" r="${r}" fill="none" stroke="#eceff7" stroke-width="${sw}"/>
-    <circle cx="${cxy}" cy="${cxy}" r="${r}" fill="none" stroke="${col}" stroke-width="${sw}" stroke-linecap="round"
-      stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}" transform="rotate(-90 ${cxy} ${cxy})"/>
-    <text x="${cxy}" y="${cxy+4}" text-anchor="middle" font-size="14" font-weight="800" fill="#1e2430">${Math.round(pct)}%</text>
-  </svg>`;
 }
 
 // Дневной столбчатый график продаж за текущий месяц (стек: Пациенты / Врачи)
@@ -396,7 +432,7 @@ function monthBarSVG(mid){
     const t=pat+doc; if(t>0) any=true; if(t>max) max=t;
   }
   if(!any) return `<div class="empty-state">нет данных за месяц</div>`;
-  const padL=8, padR=8, padT=16, padB=18, rowH=140, plotH=rowH-padT-padB;
+  const padL=8, padR=8, padT=18, padB=18, rowH=142, plotH=rowH-padT-padB;
   const W=Math.max(288, dim*11 + padL+padR), plotW=W-padL-padR;
   const colW=plotW/dim, bw=Math.min(14, colW*0.72);
   let bars="";
@@ -404,14 +440,86 @@ function monthBarSVG(mid){
     const x=padL + i*colW + (colW-bw)/2;
     const ph=patArr[i]/max*plotH, dh=docArr[i]/max*plotH;
     const yPat=padT+plotH-ph, yDoc=yPat-dh-(ph>0&&dh>0?2:0); // 2px зазор между сегментами
-    if(ph>0) bars+=`<rect x="${x.toFixed(1)}" y="${yPat.toFixed(1)}" width="${bw.toFixed(1)}" height="${ph.toFixed(1)}" rx="2" fill="#5b6ef5"/>`;
-    if(dh>0) bars+=`<rect x="${x.toFixed(1)}" y="${yDoc.toFixed(1)}" width="${bw.toFixed(1)}" height="${dh.toFixed(1)}" rx="2" fill="#12b3a6"/>`;
-    if((i+1)%5===0) bars+=`<text x="${(x+bw/2).toFixed(1)}" y="${rowH-5}" text-anchor="middle" font-size="9" fill="#75809a">${i+1}</text>`;
+    if(ph>0) bars+=`<rect x="${x.toFixed(1)}" y="${yPat.toFixed(1)}" width="${bw.toFixed(1)}" height="${ph.toFixed(1)}" rx="2" fill="${CAT_COLOR.patients}"/>`;
+    if(dh>0) bars+=`<rect x="${x.toFixed(1)}" y="${yDoc.toFixed(1)}" width="${bw.toFixed(1)}" height="${dh.toFixed(1)}" rx="2" fill="${CAT_COLOR.doctors}"/>`;
+    if((i+1)%5===0) bars+=`<text x="${(x+bw/2).toFixed(1)}" y="${rowH-5}" text-anchor="middle" font-size="9" fill="#8592ae">${i+1}</text>`;
   }
-  bars+=`<line x1="${padL}" y1="${padT+plotH}" x2="${W-padR}" y2="${padT+plotH}" stroke="#e5e9f2"/>`;
-  bars+=`<text x="${padL}" y="${padT-4}" font-size="9.5" fill="#75809a">макс за день: ${fmtMoney(max)}</text>`;
+  bars+=`<line x1="${padL}" y1="${padT+plotH}" x2="${W-padR}" y2="${padT+plotH}" stroke="rgba(255,255,255,.12)"/>`;
+  bars+=`<text x="${padL}" y="${padT-5}" font-size="9.5" fill="#8592ae">макс за день: ${fmtMoney(max)}</text>`;
   return `<div style="overflow-x:auto;margin-top:4px"><svg width="${W}" height="${rowH}" viewBox="0 0 ${W} ${rowH}" style="min-width:100%">${bars}</svg></div>
-    <div class="legend"><span><i style="background:#5b6ef5"></i>Пациенты</span><span><i style="background:#12b3a6"></i>Врачи</span></div>`;
+    <div class="legend"><span><i style="background:${CAT_COLOR.patients}"></i>Пациенты</span><span><i style="background:${CAT_COLOR.doctors}"></i>Врачи</span></div>`;
+}
+
+// Цветной столбчатый график продаж по менеджерам за выбранный период (1 столбец = 1 менеджер)
+function mgrBarsSVG(dateSet){
+  const rows=DB.config.managers.map((m,i)=>({name:m.name, val:Math.max(0,salesSum(entriesFor(m.id,dateSet))), color:mgrColor(i)}));
+  const any=rows.some(r=>r.val>0);
+  if(!any) return `<div class="empty-state">нет продаж за период</div>`;
+  const max=Math.max(1,...rows.map(r=>r.val)), n=rows.length;
+  const padT=24, plotH=148, padB=30, H=padT+plotH+padB;
+  const W=Math.max(300, n*76), slot=W/n, bw=Math.min(46, slot*0.5);
+  let bars="";
+  rows.forEach((r,i)=>{
+    const x=i*slot+slot/2, h=r.val/max*plotH, y=padT+plotH-h;
+    bars+=`<rect x="${(x-bw/2).toFixed(1)}" y="${y.toFixed(1)}" width="${bw}" height="${Math.max(0,h).toFixed(1)}" rx="5" fill="${r.color}"/>`;
+    bars+=`<text x="${x.toFixed(1)}" y="${(y-7).toFixed(1)}" text-anchor="middle" font-size="11.5" font-weight="800" fill="#eaf0fb">${compactMoney(r.val)}</text>`;
+    bars+=`<text x="${x.toFixed(1)}" y="${(padT+plotH+16).toFixed(1)}" text-anchor="middle" font-size="10.5" fill="#c2ccdf">${escapeHtml(shortName(r.name))}</text>`;
+    bars+=`<rect x="${(x-5).toFixed(1)}" y="${(padT+plotH+22).toFixed(1)}" width="10" height="3" rx="1.5" fill="${r.color}"/>`;
+  });
+  bars+=`<line x1="0" y1="${padT+plotH}" x2="${W}" y2="${padT+plotH}" stroke="rgba(255,255,255,.12)"/>`;
+  return `<div style="overflow-x:auto"><svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="min-width:100%">${bars}</svg></div>`;
+}
+
+// Плавная линия по точкам (Catmull-Rom → Безье)
+function smoothPath(P){
+  if(!P.length) return "";
+  if(P.length<3) return "M"+P.map(p=>`${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(" L");
+  let d=`M${P[0][0].toFixed(1)} ${P[0][1].toFixed(1)}`;
+  for(let i=0;i<P.length-1;i++){
+    const p0=P[i-1]||P[i], p1=P[i], p2=P[i+1], p3=P[i+2]||P[i+1];
+    const c1x=p1[0]+(p2[0]-p0[0])/6, c1y=p1[1]+(p2[1]-p0[1])/6;
+    const c2x=p2[0]-(p3[0]-p1[0])/6, c2y=p2[1]-(p3[1]-p1[1])/6;
+    d+=` C${c1x.toFixed(1)} ${c1y.toFixed(1)} ${c2x.toFixed(1)} ${c2y.toFixed(1)} ${p2[0].toFixed(1)} ${p2[1].toFixed(1)}`;
+  }
+  return d;
+}
+
+// Динамика продаж отдела по дням текущего месяца (плавная area-линия)
+function deptTrendSVG(){
+  const now=new Date(), y=now.getFullYear(), mo=now.getMonth();
+  const dim=new Date(y,mo+1,0).getDate(), today=todayStr();
+  const vals=[]; let max=0, any=false;
+  for(let day=1;day<=dim;day++){
+    const ds=ymd(new Date(y,mo,day));
+    if(ds>today){ vals.push(null); continue; }
+    let t=0; DB.config.managers.forEach(m=>{ t+=salesSum(DB.entries.filter(e=>e.managerId===m.id && e.date===ds)); });
+    t=Math.max(0,t); vals.push(t); if(t>0) any=true; if(t>max) max=t;
+  }
+  if(!any) return `<div class="empty-state">нет данных за месяц</div>`;
+  const padL=10, padR=12, padT=18, padB=22, rowH=168, plotH=rowH-padT-padB;
+  const W=Math.max(300, dim*10 + padL+padR), plotW=W-padL-padR, base=padT+plotH;
+  const xAt=i=> padL + (dim<=1?plotW/2 : i/(dim-1)*plotW);
+  const yAt=v=> padT + plotH - (v/max*plotH);
+  const pts=[]; vals.forEach((v,i)=>{ if(v!=null) pts.push([xAt(i), yAt(v)]); });
+  const uid="g"+Math.floor(Math.random()*1e6);
+  let g=`<defs><linearGradient id="${uid}" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#3987e5" stop-opacity="0.42"/><stop offset="1" stop-color="#3987e5" stop-opacity="0"/></linearGradient></defs>`;
+  // сетка: 0 / max/2 / max
+  [0,0.5,1].forEach(f=>{ const yy=base-f*plotH;
+    g+=`<line x1="${padL}" y1="${yy.toFixed(1)}" x2="${W-padR}" y2="${yy.toFixed(1)}" stroke="rgba(255,255,255,.07)"/>`;
+    g+=`<text x="${W-padR}" y="${(yy-3).toFixed(1)}" text-anchor="end" font-size="9" fill="#8592ae">${compactMoney(max*f)}</text>`; });
+  const line=smoothPath(pts);
+  const area=line+` L${pts[pts.length-1][0].toFixed(1)} ${base.toFixed(1)} L${pts[0][0].toFixed(1)} ${base.toFixed(1)} Z`;
+  g+=`<path d="${area}" fill="url(#${uid})"/>`;
+  g+=`<path d="${line}" fill="none" stroke="#3987e5" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>`;
+  // подписи дней (каждый 5-й)
+  for(let i=0;i<dim;i++){ if((i+1)%5===0 || i===dim-1){ const x=xAt(i);
+    g+=`<text x="${x.toFixed(1)}" y="${(rowH-6).toFixed(1)}" text-anchor="middle" font-size="9" fill="#8592ae">${i+1}</text>`; } }
+  // конечная точка + значение
+  const last=pts[pts.length-1], lastV=vals.filter(v=>v!=null).slice(-1)[0];
+  g+=`<circle cx="${last[0].toFixed(1)}" cy="${last[1].toFixed(1)}" r="4.5" fill="#3987e5" stroke="#141c2e" stroke-width="2"/>`;
+  g+=`<text x="${(last[0]).toFixed(1)}" y="${(last[1]-9).toFixed(1)}" text-anchor="end" font-size="10.5" font-weight="800" fill="#eaf0fb">${compactMoney(lastV)}</text>`;
+  return `<div style="overflow-x:auto"><svg width="${W}" height="${rowH}" viewBox="0 0 ${W} ${rowH}" style="min-width:100%">${g}</svg></div>`;
 }
 
 /* ============================================================
@@ -513,14 +621,15 @@ function periodSeg(){
 }
 function renderDashboard(v){
   const dates=new Set(datesForPeriod(PERIOD));
-  let html = `<h2 class="screen-title">Дашборд отдела</h2>${deviceNote()}${periodSeg()}`;
-
-  // Итоги по отделу — план всегда месячный; продано — за выбранный период
   const monthSet=new Set(datesForPeriod("month"));
   const deptPlan=deptPlanValue();
-  let deptSoldPeriod=0, deptSoldMonth=0;
+
+  // Сбор по отделу за период и за месяц
+  let deptSoldPeriod=0, deptSoldMonth=0, periodEntries=[];
   DB.config.managers.forEach(m=>{
-    deptSoldPeriod += salesSum(entriesFor(m.id, dates));
+    const ep=entriesFor(m.id, dates);
+    periodEntries=periodEntries.concat(ep);
+    deptSoldPeriod += salesSum(ep);
     deptSoldMonth  += salesSum(entriesFor(m.id, monthSet));
   });
   const deptPct=pct(deptSoldMonth, deptPlan);
@@ -532,29 +641,72 @@ function renderDashboard(v){
     deptForecast += wd.passed>0? (sm/wd.passed)*wd.total : sm;
   });
   const deptForePct=pct(deptForecast, deptPlan);
+  // KPI за период
+  const pays=payCount(periodEntries);
+  const avg=avgCheck(periodEntries);
+  const talk=sumField(periodEntries,'sipuni.talkMin');
+  const waMin=sumField(periodEntries,'wa.timeMin');
+  const delta=deptPct-100; // выполнение относительно плана 100%
 
-  // Заметная кнопка демо-данных
-  html+=`<button class="btn teal" onclick="fillDemo()" style="margin-top:0">✨ Заполнить демо-данными</button>`;
+  let html = `<h2 class="screen-title">Дашборд отдела</h2>${deviceNote()}
+    <button class="btn teal" onclick="fillDemo()" style="margin-top:0">✨ Заполнить демо-данными</button>
+    ${periodSeg()}`;
 
-  html+=`<div class="card"><h3>Итоги по отделу (план — месяц)</h3>
-    ${speedoSVG(deptPct, deptForePct)}
+  // 1) Ряд KPI-плиток (большие цветные числа)
+  html+=`<div class="kpi-grid" style="margin-bottom:12px">
+    <div class="kpi big"><div class="k-lbl">Продажи отдела</div><div class="k-val" style="color:#6aa6ee">${compactMoney(deptSoldPeriod)} ₸</div><div class="k-sub">за «${periodLabel(PERIOD)}»</div></div>
+    <div class="kpi big"><div class="k-lbl">Выполнение плана</div><div class="k-val" style="color:${zoneColor(deptPct)}">${deptPct}%</div>
+      <div class="k-delta ${delta>=0?'up':'down'}">${delta>=0?'▲ +':'▼ '}${delta}% к плану</div></div>
+    <div class="kpi big"><div class="k-lbl">Кол-во оплат</div><div class="k-val">${pays}</div><div class="k-sub">за «${periodLabel(PERIOD)}»</div></div>
+    <div class="kpi"><div class="k-lbl">Средний чек</div><div class="k-val" style="color:#5fd3ab">${avg>0?compactMoney(avg)+' ₸':'—'}</div></div>
+    <div class="kpi"><div class="k-lbl">Время на линии</div><div class="k-val">${talk}<span style="font-size:13px;color:var(--muted)"> мин</span></div><div class="k-sub">Сипуни</div></div>
+    <div class="kpi"><div class="k-lbl">Время WhatsApp</div><div class="k-val">${waMin}<span style="font-size:13px;color:var(--muted)"> мин</span></div><div class="k-sub">личный</div></div>
+  </div>`;
+
+  // 2) Крупный гейдж выполнения плана отдела (месяц)
+  html+=`<div class="card"><h3>Выполнение плана отдела · месяц</h3>
+    ${gaugeSVG(deptPct, deptForePct, {size:'lg'})}
     <div class="gauge-legend">
-      <span><b style="color:#1e2430">▎</b> стрелка — сейчас (${deptPct}%)</span>
-      <span><b style="color:#4451d6">▎</b> метка — прогноз (${deptForePct}%)</span>
+      <span><b style="color:#eaf0fb">▎</b> стрелка — сейчас (${deptPct}%)</span>
+      <span><b style="color:#eaf0fb">│</b> метка — прогноз (${deptForePct}%)</span>
     </div>
     <div class="kpis" style="margin-top:12px">
       <div class="kpi"><div class="k-lbl">План отдела</div><div class="k-val">${fmtMoney(deptPlan)}</div></div>
       <div class="kpi"><div class="k-lbl">Продано (месяц)</div><div class="k-val">${fmtMoney(deptSoldMonth)}</div></div>
-      <div class="kpi"><div class="k-lbl">Выполнение</div><div class="k-val">${deptPct}%</div></div>
-      <div class="kpi"><div class="k-lbl">Осталось</div><div class="k-val">${fmtMoney(remain)}</div></div>
+      <div class="kpi"><div class="k-lbl">Прогноз (конец мес.)</div><div class="k-val" style="color:${deptForecast<deptPlan?'#ff8c85':'#5fd3ab'}">${fmtMoney(deptForecast)}</div></div>
+      <div class="kpi"><div class="k-lbl">Осталось до плана</div><div class="k-val">${fmtMoney(remain)}</div></div>
     </div>
     <div class="bar ${deptPct<70?'warn':''}"><span style="width:${Math.min(100,deptPct)}%"></span></div>
-    <div class="hint" style="margin-top:8px">Продано за «${periodLabel(PERIOD)}»: <b>${fmtMoney(deptSoldPeriod)}</b></div>
   </div>`;
 
-  // По каждому менеджеру
-  html+=`<h3 style="margin:4px 2px 8px">Менеджеры · ${periodLabel(PERIOD)}</h3>`;
-  DB.config.managers.forEach(m=>{
+  // 3) Лидер месяца (по продажам)
+  let leader=null;
+  DB.config.managers.forEach((m,i)=>{ const sm=salesSum(entriesFor(m.id,monthSet));
+    if(!leader || sm>leader.val) leader={name:m.name, val:sm, color:mgrColor(i)}; });
+  if(leader && leader.val>0){
+    html+=`<div class="leader">
+      <div class="tro">🏆</div>
+      <div style="flex:1;min-width:0">
+        <div class="l-cap">Лидер месяца</div>
+        <div class="l-nm">${escapeHtml(leader.name)}</div>
+        <div class="l-amt">${fmtMoney(leader.val)}</div>
+        <div class="l-sub">лучший результат по продажам в этом месяце</div>
+      </div></div>`;
+  }
+
+  // 4) Цветной график продаж по менеджерам (за период)
+  html+=`<div class="card"><h3>Продажи по менеджерам · ${periodLabel(PERIOD)}</h3>
+    <div class="chart-cap">по одному столбцу на менеджера, ₸</div>
+    ${mgrBarsSVG(dates)}</div>`;
+
+  // 5) Динамика продаж отдела по дням месяца
+  html+=`<div class="card"><h3>📈 Динамика продаж отдела · месяц</h3>
+    <div class="chart-cap">суммарные продажи отдела по дням, ₸</div>
+    ${deptTrendSVG()}</div>`;
+
+  // 6) Карточки по каждому менеджеру
+  html+=`<h3 style="margin:6px 2px 8px;color:var(--ink)">Менеджеры · ${periodLabel(PERIOD)}</h3>`;
+  DB.config.managers.forEach((m,i)=>{
     const ePeriod=entriesFor(m.id, dates);
     const eMonth=entriesFor(m.id, monthSet);
     const sold=salesSum(ePeriod);
@@ -563,9 +715,9 @@ function renderDashboard(v){
     const p=pct(soldMonth, plan);
     html+=`<div class="mgr-card">
       <div class="mgr-head">
-        <div class="mgr-ring">${ringSVG(p)}</div>
+        <div class="mgr-ring">${gaugeSVG(p, null, {size:'sm'})}</div>
         <div style="flex:1;min-width:0">
-          <div class="top"><div class="nm">${escapeHtml(m.name)}</div>
+          <div class="top"><div class="nm"><i style="background:${mgrColor(i)}"></i>${escapeHtml(m.name)}</div>
             <span class="pill ${p>=100?'good':(p<50?'bad':'warn')}">${p}% плана</span></div>
           <div class="bar ${p<70?'warn':''}" style="margin-top:6px"><span style="width:${Math.min(100,p)}%"></span></div>
         </div>
@@ -622,10 +774,10 @@ function renderCabinet(v){
 
   let html=`<h2 class="screen-title">Мой кабинет</h2>${deviceNote()}
     <div class="card"><h3>${escapeHtml(managerName(mid))} · текущий месяц</h3>
-      ${speedoSVG(p, forePct)}
+      ${gaugeSVG(p, forePct, {size:'lg'})}
       <div class="gauge-legend">
-        <span><b style="color:#1e2430">▎</b> стрелка — сейчас (${p}%)</span>
-        <span><b style="color:#4451d6">▎</b> метка — прогноз (${forePct}%)</span>
+        <span><b style="color:#eaf0fb">▎</b> стрелка — сейчас (${p}%)</span>
+        <span><b style="color:#eaf0fb">│</b> метка — прогноз (${forePct}%)</span>
       </div>
       <div class="kpis" style="margin-top:12px">
         <div class="kpi"><div class="k-lbl">План месяца</div><div class="k-val">${fmtMoney(plan)}</div></div>
@@ -658,8 +810,8 @@ function renderCabinet(v){
 
     <div class="card"><h3>🧩 Продажи по категориям (месяц)</h3>
     <div class="split">
-      <div class="s-cat"><div class="s-v">${fmtMoney(pat)}</div><div class="s-l">Пациенты · ${totalCat>0?Math.round(pat/totalCat*100):0}%</div></div>
-      <div class="s-cat"><div class="s-v">${fmtMoney(doc)}</div><div class="s-l">Врачи · ${totalCat>0?Math.round(doc/totalCat*100):0}%</div></div>
+      <div class="s-cat"><div class="s-v">${fmtMoney(pat)}</div><div class="s-l"><i style="background:${CAT_COLOR.patients}"></i>Пациенты · ${totalCat>0?Math.round(pat/totalCat*100):0}%</div></div>
+      <div class="s-cat"><div class="s-v">${fmtMoney(doc)}</div><div class="s-l"><i style="background:${CAT_COLOR.doctors}"></i>Врачи · ${totalCat>0?Math.round(doc/totalCat*100):0}%</div></div>
     </div></div>
 
     <button class="btn warn" onclick="openHelp()">🆘 Нужна помощь руководителя</button>`;
@@ -928,16 +1080,15 @@ function renderCalendar(v){
   }
 
   v.innerHTML=`<h2 class="screen-title">Календарь</h2>${deviceNote()}
-    <div class="note" style="background:#eef1fb;border-color:#d5ddf7;color:#3b47a8">
-      <span>👆</span><span><b>Нажмите на день</b>, чтобы отметить или снять выходной.</span></div>
+    <div class="note"><span>👆</span><span><b>Нажмите на день</b>, чтобы отметить или снять выходной.</span></div>
     ${mgrPicker?`<div class="card">${mgrPicker}</div>`:""}
     <div class="card"><h3>${escapeHtml(managerName(mid))} · ${monthName} ${y}</h3>
       <div class="cal">${cells}</div>
       <div class="legend">
-        <span><i style="background:#f4f6fb;border:1px solid #e5e9f2"></i>Рабочий день</span>
-        <span><i style="background:#f0f1f5"></i>Выходной (сб-вс)</span>
-        <span><i style="background:#fdecea"></i>Праздник РК</span>
-        <span><i style="background:#fff3d6"></i>Личный выходной</span>
+        <span><i style="background:#212d4d"></i>Рабочий день</span>
+        <span><i style="background:rgba(255,255,255,.05)"></i>Выходной (сб-вс)</span>
+        <span><i style="background:rgba(229,84,75,.4)"></i>Праздник РК</span>
+        <span><i style="background:rgba(250,178,25,.4)"></i>Личный выходной</span>
       </div>
     </div>
     <div class="card"><div class="kpis">
