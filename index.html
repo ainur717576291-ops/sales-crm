@@ -686,6 +686,7 @@ function deptTrendSVG(monthStr){
    ============================================================ */
 let ROUTE = null;
 let PERIOD = "today";
+let PREVIEW_MID = null; // РОП смотрит кабинет менеджера, не выходя из своей роли
 
 function render(){
   const topbar=document.getElementById("topbar");
@@ -694,6 +695,7 @@ function render(){
   topbar.style.display="flex"; tabbar.style.display="flex";
   document.getElementById("whoami").textContent = whoLabel();
   if(!ROUTE) ROUTE = defaultRoute();
+  if(ROUTE!=="cabinet") PREVIEW_MID=null; // выход из просмотра кабинета при любой навигации
   renderTabs();
   const v=document.getElementById("view");
   v.innerHTML="";
@@ -887,7 +889,7 @@ function renderDashboard(v){
     const soldMonth=salesSum(eMonth);
     const plan=managerPlan(m.id);
     const p=pct(soldMonth, plan);
-    html+=`<div class="mgr-card">
+    html+=`<div class="mgr-card" style="cursor:pointer" onclick="previewManager('${m.id}')">
       <div class="mgr-head">
         <div class="mgr-ring">${gaugeSVG(p, null, {size:'sm'})}</div>
         <div style="flex:1;min-width:0">
@@ -901,7 +903,8 @@ function renderDashboard(v){
         <div><span>Оплат</span><b>${payCount(ePeriod)}</b></div>
         <div><span>На линии (Сипуни)</span><b>${sumField(ePeriod,'sipuni.talkMin')} мин</b></div>
         <div><span>WhatsApp</span><b>${sumField(ePeriod,'wa.timeMin')} мин</b></div>
-      </div></div>`;
+      </div>
+      <div class="hint" style="text-align:right;margin-top:6px;color:var(--blue)">Открыть кабинет ›</div></div>`;
   });
 
   // Обращения "нужна помощь руководителя"
@@ -925,7 +928,8 @@ function periodLabel(p){ return {today:"Сегодня",yesterday:"Вчера",w
    ЭКРАН 2: МОЙ КАБИНЕТ (Менеджер)
    ============================================================ */
 function renderCabinet(v){
-  const mid=SESSION.managerId;
+  const preview = isBoss() && PREVIEW_MID;
+  const mid = preview ? PREVIEW_MID : SESSION.managerId;
   const monthSet=new Set(datesForPeriod("month"));
   const eMonth=entriesFor(mid, monthSet);
   const plan=managerPlan(mid);
@@ -946,7 +950,9 @@ function renderCabinet(v){
   const {pat,doc}=categorySplit(eMonth);
   const totalCat=pat+doc;
 
-  let html=`<h2 class="screen-title">Мой кабинет</h2>${deviceNote()}
+  let html=`${preview?`<button class="btn ghost" style="margin-bottom:10px" onclick="closePreview()">← Назад к дашборду</button>
+    <div class="card" style="background:#eef3ff;border:1px solid #cddbff"><b>👀 Просмотр кабинета менеджера</b><br><span class="hint">Вы смотрите как «${escapeHtml(managerName(mid))}». Ваша роль — Руководитель.</span></div>`:""}
+    <h2 class="screen-title">${preview?"Кабинет менеджера":"Мой кабинет"}</h2>${preview?"":deviceNote()}
     <div class="card"><h3>${escapeHtml(managerName(mid))} · текущий месяц</h3>
       ${gaugeSVG(p, forePct, {size:'lg'})}
       <div class="gauge-legend">
@@ -990,9 +996,12 @@ function renderCabinet(v){
       <div class="s-cat"><div class="s-v">${fmtMoney(doc)}</div><div class="s-l"><i style="background:${CAT_COLOR.doctors}"></i>Врачи · ${totalCat>0?Math.round(doc/totalCat*100):0}%</div></div>
     </div></div>
 
-    <button class="btn warn" onclick="openHelp()">🆘 Нужна помощь руководителя</button>`;
+    ${preview?`<button class="btn ghost" onclick="closePreview()">← Назад к дашборду</button>`
+             :`<button class="btn warn" onclick="openHelp()">🆘 Нужна помощь руководителя</button>`}`;
   v.innerHTML=html;
 }
+function previewManager(id){ if(!isBoss()) return; PREVIEW_MID=id; ROUTE="cabinet"; render(); }
+function closePreview(){ PREVIEW_MID=null; ROUTE="dashboard"; render(); }
 
 /* ============================================================
    ЭКРАН 3: ВВЕСТИ ДАННЫЕ (Менеджер)
