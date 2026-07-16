@@ -338,7 +338,7 @@ function datesForPeriod(period){
    РАСЧЁТЫ
    ============================================================ */
 function entriesFor(managerId, dateSet){
-  return DB.entries.filter(e=> e.managerId===managerId && dateSet.has(e.date));
+  return DE().filter(e=> e.managerId===managerId && dateSet.has(e.date));
 }
 // продажи: сумма без возвратов минус возвраты (ВАЛОВАЯ, до комиссии банка)
 function salesSum(entries){
@@ -397,7 +397,7 @@ function managerBonus(managerId, monthStr){ return Number(((DB.bonus||{})[manage
 function reportDaysCount(managerId, monthStr){
   const workSet=new Set(monthDatesStr(monthStr).filter(ds=>isWorkingDay(ds, managerId)));
   const days=new Set();
-  DB.entries.forEach(e=>{ if(e.managerId===managerId && workSet.has(e.date)) days.add(e.date); });
+  DE().forEach(e=>{ if(e.managerId===managerId && workSet.has(e.date) && (e.sales||[]).length) days.add(e.date); });
   return days.size;
 }
 // ставка % за предоплаты с вебинара по нетто-сумме P
@@ -582,7 +582,7 @@ function monthBarSVG(mid){
   for(let day=1;day<=dim;day++){
     const ds=ymd(new Date(y,mo,day));
     let pat=0, doc=0;
-    DB.entries.filter(e=>e.managerId===mid && e.date===ds).forEach(e=> (e.sales||[]).forEach(x=>{
+    DE().filter(e=>e.managerId===mid && e.date===ds).forEach(e=> (e.sales||[]).forEach(x=>{
       const amt=(x.isReturn?-1:1)*(Number(x.amount)||0);
       if(x.category==="doctors") doc+=amt; else pat+=amt;
     }));
@@ -652,7 +652,7 @@ function deptTrendSVG(monthStr){
   for(let day=1;day<=dim;day++){
     const ds=ymd(new Date(y,mo,day));
     if(ds>today){ vals.push(null); continue; }
-    let t=0; DB.config.managers.forEach(m=>{ t+=salesSum(DB.entries.filter(e=>e.managerId===m.id && e.date===ds)); });
+    let t=0; DB.config.managers.forEach(m=>{ t+=salesSum(DE().filter(e=>e.managerId===m.id && e.date===ds)); });
     t=Math.max(0,t); vals.push(t); if(t>0) any=true; if(t>max) max=t;
   }
   if(!any) return `<div class="empty-state">нет данных за месяц</div>`;
@@ -824,7 +824,7 @@ function renderDashboard(v){
   const delta=deptPct-100; // выполнение относительно плана 100%
 
   let html = `<h2 class="screen-title">Дашборд отдела</h2>${deviceNote()}
-    <button class="btn teal" onclick="fillDemo()" style="margin-top:0">✨ Заполнить демо-данными</button>
+    ${amoBadgeHTML()}
     ${periodSeg()}
     ${PERIOD==="month"? monthNav() : ""}`;
 
@@ -1221,7 +1221,7 @@ function renderRating(v){
 
   // Лидеры по месяцам: последние месяцы с продажами (до 12, свежие сверху)
   const monthsSet=new Set();
-  DB.entries.forEach(e=>{ if((e.sales||[]).length) monthsSet.add(String(e.date).slice(0,7)); });
+  DE().forEach(e=>{ if((e.sales||[]).length) monthsSet.add(String(e.date).slice(0,7)); });
   const months=[...monthsSet].sort().reverse().slice(0,12);
   const leaders=months.map(ms=>{
     const ds=new Set(monthDatesStr(ms));
@@ -1258,7 +1258,7 @@ let HIST_PERIOD="month", HIST_MGR="all";
 function renderHistory(v){
   const boss=isBoss();
   const dates=new Set(datesForPeriod(HIST_PERIOD));
-  let entries=DB.entries.filter(e=>dates.has(e.date));
+  let entries=DE().filter(e=>dates.has(e.date));
   if(!boss){ entries=entries.filter(e=>e.managerId===SESSION.managerId); }
   else if(HIST_MGR!=="all"){ entries=entries.filter(e=>e.managerId===HIST_MGR); }
   entries.sort((a,b)=> b.date.localeCompare(a.date) || managerName(a.managerId).localeCompare(managerName(b.managerId)));
@@ -1560,6 +1560,48 @@ let AMO_LOADING = false;   // идёт загрузка
 let AMO_ERROR = false;     // ошибка последней загрузки
 let AMO_PERIOD = "today";  // today | yesterday | week | month
 let AMO_MONTH = null;      // выбранный ключ месяца ('YYYY-MM') для периода «Месяц»
+let AMO_ENTRIES = null;    // синтетические записи продаж из amoCRM (дашборд/кабинет/рейтинг)
+let AMO_MODE = true;       // true = показывать реальные продажи из amoCRM вместо ручного ввода
+
+// Источник записей для витрин (дашборд/кабинет/рейтинг/графики): amoCRM, если загружен
+function DE(){ return (AMO_MODE && AMO_ENTRIES) ? AMO_ENTRIES : DB.entries; }
+
+// Собрать «синтетические» записи продаж из amoCRM (daily_by_manager), склеив телефонию из ручных записей.
+// Продажи берём ТОЛЬКО из amoCRM (истина по деньгам), Сипуни/WhatsApp — из ручного ввода того же дня.
+function buildAmoEntries(){
+  if(!AMO || !AMO.daily_by_manager){ AMO_ENTRIES=null; return; }
+  const nameToId={}; DB.config.managers.forEach(m=>{ nameToId[m.name]=m.id; });
+  const byKey={}; // "mid|date" -> запись
+  const dbm=AMO.daily_by_manager;
+  Object.keys(dbm).forEach(date=>{
+    const cell=dbm[date]||{};
+    Object.keys(cell).forEach(name=>{
+      const mid=nameToId[name]; if(!mid) return; // имя не среди менеджеров (РОП/отдел заботы) — пропускаем
+      const c=cell[name]||{};
+      const sales=[];
+      [["patients","patients"],["doctors","doctors"]].forEach(([k,cat])=>{
+        const a=c[k]||[0,0]; const sum=Number(a[0])||0, cnt=Number(a[1])||0;
+        if(cnt>0){ const each=sum/cnt; for(let i=0;i<cnt;i++) sales.push({amount:each,category:cat,prepay:true,isReturn:false,pay:'plain'}); }
+        else if(sum>0){ sales.push({amount:sum,category:cat,prepay:true,isReturn:false,pay:'plain'}); }
+      });
+      byKey[mid+"|"+date]={id:'amo_'+mid+'_'+date, managerId:mid, date:date, sales:sales};
+    });
+  });
+  (DB.entries||[]).forEach(e=>{
+    const key=e.managerId+"|"+e.date;
+    if(byKey[key]){ if(e.sipuni) byKey[key].sipuni=e.sipuni; if(e.wa) byKey[key].wa=e.wa; }
+    else byKey[key]={id:'man_'+e.managerId+'_'+e.date, managerId:e.managerId, date:e.date, sales:[], sipuni:e.sipuni, wa:e.wa};
+  });
+  AMO_ENTRIES=Object.keys(byKey).map(k=>byKey[k]);
+}
+
+// плашка-статус источника данных (для дашборда/кабинета)
+function amoBadgeHTML(){
+  if(AMO_LOADING) return `<div class="hint" style="margin:2px 2px 10px">⏳ Загружаю продажи из amoCRM…</div>`;
+  if(AMO && AMO_MODE) return `<div class="hint" style="margin:2px 2px 10px;color:var(--teal-d)">✅ Реальные продажи из amoCRM · обновлено ${amoFmtDateTime(AMO.generated_at)}</div>`;
+  if(AMO_ERROR) return `<div class="hint" style="margin:2px 2px 10px;color:var(--bad)">😕 Нет связи с amoCRM — показаны данные с устройства. <a href="#" onclick="amoRefresh();return false">Обновить</a></div>`;
+  return "";
+}
 
 const RU_MONTHS_GEN=["января","февраля","марта","апреля","мая","июня","июля","августа","сентября","октября","ноября","декабря"];
 
@@ -1580,6 +1622,7 @@ function amoLoad(){
       AMO=j; AMO_LOADING=false; AMO_ERROR=false;
       const keys=Object.keys(j.months||{}).sort();
       if(!AMO_MONTH || !keys.includes(AMO_MONTH)) AMO_MONTH = keys.length? keys[keys.length-1] : null;
+      buildAmoEntries();
       render();
     })
     .catch(()=>{ AMO_LOADING=false; AMO_ERROR=true; render(); });
@@ -1773,4 +1816,5 @@ function renderAmo(v){
 
 /* старт */
 render();
+amoLoad(); // подтянуть реальные продажи из amoCRM для дашборда/кабинета
 </script>
