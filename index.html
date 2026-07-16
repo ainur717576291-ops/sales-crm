@@ -1,6 +1,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Отдел продаж</title>
+<!-- v8-amocrm -->
 <!-- v7-payroll-payments -->
 <!--
   Отдел продаж — мини-приложение (прототип, mobile-first, стиль Telegram mini-app)
@@ -704,6 +705,7 @@ function render(){
     case "rating":    renderRating(v); break;
     case "history":   renderHistory(v); break;
     case "calendar":  renderCalendar(v); break;
+    case "amocrm":    renderAmo(v); break;
     case "settings":  renderSettings(v); break;
     default: renderDashboard(v);
   }
@@ -718,8 +720,8 @@ function defaultRoute(){ return isBoss()? "dashboard" : "cabinet"; }
 
 function renderTabs(){
   const tabs = isBoss()
-    ? [["dashboard","📊","Дашборд"],["plans","🎯","Планы"],["rating","🏆","Рейтинг"],["calendar","📅","Календарь"],["history","🗂","История"],["settings","⚙️","Настройки"]]
-    : [["cabinet","🏠","Кабинет"],["entry","✍️","Ввод"],["calendar","📅","Календарь"],["history","🗂","История"]];
+    ? [["dashboard","📊","Дашборд"],["amocrm","💹","amoCRM"],["plans","🎯","Планы"],["rating","🏆","Рейтинг"],["calendar","📅","Календарь"],["history","🗂","История"],["settings","⚙️","Настройки"]]
+    : [["cabinet","🏠","Кабинет"],["entry","✍️","Ввод"],["amocrm","💹","amoCRM"],["calendar","📅","Календарь"],["history","🗂","История"]];
   const bar=document.getElementById("tabbar");
   bar.innerHTML="";
   tabs.forEach(([r,ic,lbl])=>{
@@ -1535,6 +1537,229 @@ function toast(msg){
   clearTimeout(t._h); t._h=setTimeout(()=>t.style.opacity="0",1600);
 }
 function escapeHtml(s){ return String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+/* ============================================================
+   ЭКРАН: ПРОДАЖИ ИЗ amoCRM (только чтение, данные из ./sales-data.json)
+   Файл готовит серверная синхронизация. Схема:
+   { generated_at, managers:[...], rop, recent:{today,yesterday,week,month},
+     months:{'YYYY-MM':PERIOD,...}, daily_current_month:[{date,patients,doctors}] }
+   где PERIOD = { имя: {patients:[sum,count], doctors:[sum,count]} }.
+   ============================================================ */
+let AMO = null;            // кэш загруженных данных
+let AMO_LOADING = false;   // идёт загрузка
+let AMO_ERROR = false;     // ошибка последней загрузки
+let AMO_PERIOD = "today";  // today | yesterday | week | month
+let AMO_MONTH = null;      // выбранный ключ месяца ('YYYY-MM') для периода «Месяц»
+
+const RU_MONTHS_GEN=["января","февраля","марта","апреля","мая","июня","июля","августа","сентября","октября","ноября","декабря"];
+
+// человекочитаемая дата/время из ISO вида 2026-07-16T09:11:38+05:00
+function amoFmtDateTime(iso){
+  if(!iso) return "—";
+  const m=String(iso).match(/(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+  if(!m) return String(iso);
+  return (+m[3])+" "+RU_MONTHS_GEN[(+m[2])-1]+" "+m[1]+", "+m[4]+":"+m[5];
+}
+
+// загрузка данных из ./sales-data.json (та же папка, тот же origin — без CORS)
+function amoLoad(){
+  AMO_LOADING=true; AMO_ERROR=false;
+  fetch("./sales-data.json", {cache:"no-store"})
+    .then(r=>{ if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); })
+    .then(j=>{
+      AMO=j; AMO_LOADING=false; AMO_ERROR=false;
+      const keys=Object.keys(j.months||{}).sort();
+      if(!AMO_MONTH || !keys.includes(AMO_MONTH)) AMO_MONTH = keys.length? keys[keys.length-1] : null;
+      render();
+    })
+    .catch(()=>{ AMO_LOADING=false; AMO_ERROR=true; render(); });
+}
+function amoRefresh(){ AMO=null; amoLoad(); render(); }
+function amoSetPeriod(p){ AMO_PERIOD=p; render(); }
+function amoMonthStep(delta){
+  if(!AMO) return;
+  const keys=Object.keys(AMO.months||{}).sort();
+  const i=keys.indexOf(AMO_MONTH)+delta;
+  if(i<0 || i>=keys.length) return;
+  AMO_MONTH=keys[i]; render();
+}
+
+// объект периода (PERIOD) в зависимости от выбранного переключателя
+function amoPeriodObj(){
+  if(!AMO) return {};
+  if(AMO_PERIOD==="month") return (AMO.months||{})[AMO_MONTH] || {};
+  return (AMO.recent||{})[AMO_PERIOD] || {};
+}
+// статистика одного человека (менеджер/РОП) внутри объекта периода
+function amoStat(obj, name){
+  const o=(obj||{})[name]||{};
+  const pat=o.patients||[0,0], doc=o.doctors||[0,0];
+  const patSum=Number(pat[0])||0, patCnt=Number(pat[1])||0;
+  const docSum=Number(doc[0])||0, docCnt=Number(doc[1])||0;
+  return {patSum, patCnt, docSum, docCnt, sum:patSum+docSum, cnt:patCnt+docCnt};
+}
+function amoPeriodLabel(){
+  if(AMO_PERIOD==="month") return AMO_MONTH? monthLabel(AMO_MONTH) : "Месяц";
+  return {today:"Сегодня",yesterday:"Вчера",week:"Неделя",month:"Месяц"}[AMO_PERIOD] || "";
+}
+// подпись месяца графика (по первому дню из daily_current_month)
+function amoCurMonthLabel(){
+  const arr=AMO && AMO.daily_current_month;
+  if(arr && arr.length && arr[0] && arr[0].date) return monthLabel(String(arr[0].date).slice(0,7));
+  return AMO_MONTH? monthLabel(AMO_MONTH) : "";
+}
+// переключатель периода (в стиле приложения)
+function amoPeriodSeg(){
+  const items=[["today","Сегодня"],["yesterday","Вчера"],["week","Неделя"],["month","Месяц"]];
+  return `<div class="seg">${items.map(([k,l])=>`<button class="${AMO_PERIOD===k?'on':''}" onclick="amoSetPeriod('${k}')">${l}</button>`).join("")}</div>`;
+}
+// навигатор месяцев по ключам AMO.months
+function amoMonthNav(){
+  const keys=Object.keys((AMO&&AMO.months)||{}).sort();
+  if(!keys.length) return "";
+  const idx=keys.indexOf(AMO_MONTH);
+  const atFirst = idx<=0, atLast = idx>=keys.length-1;
+  return `<div class="mnav">
+    <button class="mnav-btn ${atFirst?'hidden':''}" onclick="amoMonthStep(-1)" aria-label="Предыдущий месяц"${atFirst?' disabled':''}>‹</button>
+    <div class="mnav-lbl">${escapeHtml(AMO_MONTH? monthLabel(AMO_MONTH) : "—")}</div>
+    <button class="mnav-btn ${atLast?'hidden':''}" onclick="amoMonthStep(1)" aria-label="Следующий месяц"${atLast?' disabled':''}>›</button>
+  </div>`;
+}
+// карточка одного менеджера / РОПа
+function amoMgrCardHTML(m, color, isTop, isRop){
+  const badge = isRop
+    ? `<span class="pill" style="margin-left:6px;background:rgba(139,92,246,.14);color:#6d3fd6;border-color:rgba(139,92,246,.30)">РОП</span>`
+    : (isTop? `<span class="pill good" style="margin-left:6px">🔥 Лидер</span>` : "");
+  const style = isTop? ' style="border-color:rgba(224,137,11,.5);box-shadow:0 8px 24px rgba(224,137,11,.16)"' : '';
+  return `<div class="mgr-card"${style}>
+    <div class="top">
+      <div class="nm"><i style="background:${color}"></i>${escapeHtml(m.name)}${badge}</div>
+      <div class="tot-strong" style="font-size:18px">${fmtMoney(m.sum)}</div>
+    </div>
+    <div class="mini" style="grid-template-columns:1fr 1fr;margin-top:8px">
+      <div><span>Сделок</span><b>${m.cnt}</b></div>
+      <div><span>Средний чек</span><b>${m.cnt>0? fmtMoney(m.sum/m.cnt) : '—'}</b></div>
+    </div>
+    <div class="hint" style="margin-top:8px">
+      <i style="display:inline-block;width:9px;height:9px;border-radius:3px;background:${CAT_COLOR.patients};margin-right:4px;vertical-align:0"></i>Пациенты: ${fmtMoney(m.patSum)} (${m.patCnt}) &nbsp;·&nbsp;
+      <i style="display:inline-block;width:9px;height:9px;border-radius:3px;background:${CAT_COLOR.doctors};margin-right:4px;vertical-align:0"></i>Врачи: ${fmtMoney(m.docSum)} (${m.docCnt})
+    </div>
+  </div>`;
+}
+// дневной столбчатый график из AMO.daily_current_month (стек: Пациенты/Врачи)
+function amoDailyBarSVG(arr){
+  arr = Array.isArray(arr)? arr : [];
+  const dim=arr.length;
+  const patArr=arr.map(d=>Math.max(0,Number(d && d.patients)||0));
+  const docArr=arr.map(d=>Math.max(0,Number(d && d.doctors)||0));
+  let max=0, any=false;
+  for(let i=0;i<dim;i++){ const t=patArr[i]+docArr[i]; if(t>0) any=true; if(t>max) max=t; }
+  if(!dim || !any) return `<div class="empty-state">нет данных за месяц</div>`;
+  const padL=8, padR=8, padT=18, padB=18, rowH=142, plotH=rowH-padT-padB;
+  const W=Math.max(288, dim*11 + padL+padR), plotW=W-padL-padR;
+  const colW=plotW/dim, bw=Math.min(14, colW*0.72);
+  const dayNum=i=>{ const ds=arr[i] && arr[i].date; return ds? Number(String(ds).slice(8,10)) : (i+1); };
+  let bars="";
+  for(let i=0;i<dim;i++){
+    const x=padL + i*colW + (colW-bw)/2;
+    const ph=patArr[i]/max*plotH, dh=docArr[i]/max*plotH;
+    const yPat=padT+plotH-ph, yDoc=yPat-dh-(ph>0&&dh>0?2:0);
+    if(ph>0) bars+=`<rect x="${x.toFixed(1)}" y="${yPat.toFixed(1)}" width="${bw.toFixed(1)}" height="${ph.toFixed(1)}" rx="2" fill="${CAT_COLOR.patients}"/>`;
+    if(dh>0) bars+=`<rect x="${x.toFixed(1)}" y="${yDoc.toFixed(1)}" width="${bw.toFixed(1)}" height="${dh.toFixed(1)}" rx="2" fill="${CAT_COLOR.doctors}"/>`;
+    if((i+1)%5===0) bars+=`<text x="${(x+bw/2).toFixed(1)}" y="${rowH-5}" text-anchor="middle" font-size="9" fill="#5f6b88">${dayNum(i)}</text>`;
+  }
+  bars+=`<line x1="${padL}" y1="${padT+plotH}" x2="${W-padR}" y2="${padT+plotH}" stroke="rgba(31,39,64,.14)"/>`;
+  bars+=`<text x="${padL}" y="${padT-5}" font-size="9.5" fill="#5f6b88">макс за день: ${fmtMoney(max)}</text>`;
+  return `<div style="overflow-x:auto;margin-top:4px"><svg width="${W}" height="${rowH}" viewBox="0 0 ${W} ${rowH}" style="min-width:100%">${bars}</svg></div>
+    <div class="legend"><span><i style="background:${CAT_COLOR.patients}"></i>Пациенты</span><span><i style="background:${CAT_COLOR.doctors}"></i>Врачи</span></div>`;
+}
+
+function renderAmo(v){
+  // первая загрузка при открытии экрана
+  if(!AMO && !AMO_LOADING && !AMO_ERROR) amoLoad();
+
+  if(AMO_LOADING){
+    v.innerHTML=`<h2 class="screen-title">Продажи из amoCRM</h2>
+      <div class="card"><div class="empty-state">⏳ Загружаем данные из amoCRM…</div></div>`;
+    return;
+  }
+  if(AMO_ERROR || !AMO){
+    v.innerHTML=`<h2 class="screen-title">Продажи из amoCRM</h2>
+      <div class="card"><div class="empty-state">😕 Не удалось загрузить данные из amoCRM.<br>Проверьте синхронизацию и попробуйте ещё раз.<br><br>
+        <button class="btn ghost" onclick="amoRefresh()" style="max-width:220px;margin:0 auto">🔄 Попробовать снова</button></div></div>`;
+    return;
+  }
+
+  const obj=amoPeriodObj();
+  const plabel=amoPeriodLabel();
+  const mgrs=(AMO.managers||[]).map(nm=>Object.assign({name:nm}, amoStat(obj,nm)));
+  const deptSum=mgrs.reduce((s,m)=>s+m.sum,0);
+  const deptCnt=mgrs.reduce((s,m)=>s+m.cnt,0);
+  const topSum=mgrs.reduce((s,m)=>Math.max(s,m.sum),0);
+
+  let html=`<h2 class="screen-title">Продажи из amoCRM</h2>
+    <div class="card" style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 14px">
+      <div style="min-width:0">
+        <div style="font-weight:800;font-size:15px">📊 Данные из amoCRM</div>
+        <div class="hint" style="margin-top:2px">обновлено: ${escapeHtml(amoFmtDateTime(AMO.generated_at))}</div>
+      </div>
+      <button class="btn ghost sm" onclick="amoRefresh()" style="flex:none">🔄 Обновить</button>
+    </div>
+    ${amoPeriodSeg()}
+    ${AMO_PERIOD==="month"? amoMonthNav() : ""}`;
+
+  // Итог отдела (только 3 менеджера, без РОПа)
+  html+=`<div class="leader">
+    <div class="tro">💰</div>
+    <div style="flex:1;min-width:0">
+      <div class="l-cap">Продажи отдела за «${escapeHtml(plabel)}»</div>
+      <div class="l-amt">${fmtMoney(deptSum)}</div>
+      <div class="l-sub">${deptCnt} сделок · ${mgrs.length} менеджер(а/ов) · РОП не входит в сумму отдела</div>
+    </div></div>`;
+
+  // Карточки менеджеров
+  html+=`<h3 style="margin:6px 2px 8px;color:var(--ink)">Менеджеры · ${escapeHtml(plabel)}</h3>`;
+  if(!mgrs.length){
+    html+=`<div class="empty-state">Список менеджеров пуст</div>`;
+  } else {
+    mgrs.forEach((m,i)=>{ html+=amoMgrCardHTML(m, mgrColor(i), (m.sum>0 && m.sum===topSum), false); });
+  }
+
+  // Карточка РОПа
+  if(AMO.rop){
+    const r=Object.assign({name:AMO.rop}, amoStat(obj, AMO.rop));
+    html+=`<h3 style="margin:14px 2px 8px;color:var(--ink)">Руководитель отдела</h3>`;
+    html+=amoMgrCardHTML(r, "#8b5cf6", false, true);
+  }
+
+  // Рейтинг менеджеров за период
+  const ranked=mgrs.slice().sort((a,b)=>b.sum-a.sum);
+  const medals=["🥇","🥈","🥉"];
+  html+=`<div class="card"><h3>🏆 Рейтинг · ${escapeHtml(plabel)}</h3>`;
+  if(!ranked.some(r=>r.sum>0)){
+    html+=`<div class="empty-state">За «${escapeHtml(plabel)}» продаж нет</div>`;
+  } else {
+    ranked.forEach((r,i)=>{
+      const isMedal=i<3 && r.sum>0;
+      const plc=isMedal? `<div class="plc medal">${medals[i]}</div>` : `<div class="plc">${i+1}</div>`;
+      const top=(i===0 && r.sum>0)? " top" : "";
+      html+=`<div class="rank${top}">${plc}
+        <div class="r-body">
+          <div class="r-nm">${escapeHtml(r.name)}</div>
+          <div class="r-sub">${r.cnt} сделок · Пациенты ${r.patCnt} · Врачи ${r.docCnt}</div>
+        </div>
+        <div class="r-amt">${fmtMoney(r.sum)}</div></div>`;
+    });
+  }
+  html+=`</div>`;
+
+  // График по дням текущего месяца
+  html+=`<div class="card"><h3>📈 Динамика продаж за ${escapeHtml(amoCurMonthLabel())}</h3>
+    <div class="chart-cap">продажи по дням, ₸ (стек: Пациенты / Врачи)</div>
+    ${amoDailyBarSVG(AMO.daily_current_month)}</div>`;
+
+  v.innerHTML=html;
+}
 
 /* старт */
 render();
