@@ -1013,11 +1013,11 @@ function renderEntry(v){
   if(!ENTRY_DRAFT || ENTRY_DRAFT.managerId!==mid) loadDraft(mid, todayStr());
   const d=ENTRY_DRAFT;
   let salesList = (d.sales||[]).map((s,i)=>{
-    const tag = s.isReturn? `<span class="tag ret">возврат</span>` : (s.category==="doctors"? `<span class="tag doc">врачи</span>`:`<span class="tag pat">пациенты</span>`);
-    const payTag = (s.pay && s.pay!=="plain")? `<span class="tag">${escapeHtml(PAY_LABEL[s.pay]||s.pay)}</span>` : "";
+    const tag = s.category==="doctors"? `<span class="tag doc">врачи</span>`:`<span class="tag pat">пациенты</span>`;
+    const payTag = s.payMethod? `<span class="tag">${escapeHtml(s.payMethod)}</span>` : "";
     return `<div class="lrow"><div>
-      <div class="l-main">${s.isReturn?"−":""}${fmtMoney(s.amount)}</div>
-      <div class="l-sub">${tag} ${s.prepay?'<span class="tag">предоплата</span>':''} ${payTag}</div>
+      <div class="l-main">${fmtMoney(s.amount)} · ${escapeHtml(s.product||'')}</div>
+      <div class="l-sub">${s.participant?escapeHtml(s.participant)+' · ':''}${tag} ${s.prepay?'<span class="tag">предоплата</span>':''} ${payTag}</div>
     </div><button class="x" onclick="delSale(${i})">×</button></div>`;
   }).join("");
   if(!salesList) salesList=`<div class="empty-state">Продаж пока нет</div>`;
@@ -1068,7 +1068,7 @@ function blankDraft(mid, date){
     wa:{calls:0,timeMin:0}, invoices:0, sales:[]};
 }
 function loadDraft(mid, date){
-  const ex=DB.entries.find(e=>e.managerId===mid && e.date===date);
+  const ex=sharedEntriesFor(mid).find(e=>e.date===date);
   ENTRY_DRAFT = ex? JSON.parse(JSON.stringify(ex)) : blankDraft(mid,date);
 }
 // перенести значения полей формы в черновик (перед сменой даты / сохранением)
@@ -1087,12 +1087,17 @@ function changeDraftDate(date){
 function saveEntry(){
   pullForm();
   const d=ENTRY_DRAFT;
-  d.id="e_"+d.managerId+"_"+d.date; // одна запись на менеджера на дату
-  const idx=DB.entries.findIndex(e=>e.managerId===d.managerId && e.date===d.date);
-  if(idx>=0) DB.entries[idx]=JSON.parse(JSON.stringify(d));
-  else DB.entries.push(JSON.parse(JSON.stringify(d)));
-  save();
-  toast("Сохранено ✓");
+  const mid=d.managerId;
+  d.id="e_"+mid+"_"+d.date; // одна запись на менеджера на дату
+  if(!SHARED) SHARED={};
+  if(!SHARED[mid]) SHARED[mid]=[];
+  const idx=SHARED[mid].findIndex(e=>e.date===d.date);
+  if(idx>=0) SHARED[mid][idx]=JSON.parse(JSON.stringify(d));
+  else SHARED[mid].push(JSON.parse(JSON.stringify(d)));
+  toast("Сохраняю…");
+  saveSharedManager(mid)
+    .then(()=>{ toast("Сохранено ✓ (видно у руководителя)"); render(); })
+    .catch(()=>{ toast("⚠ Нет связи с базой — попробуйте ещё раз"); });
 }
 function delSale(i){ pullForm(); ENTRY_DRAFT.sales.splice(i,1); render(); }
 
@@ -1100,33 +1105,27 @@ function delSale(i){ pullForm(); ENTRY_DRAFT.sales.splice(i,1); render(); }
 let SALE_TMP={amount:0,category:"patients",prepay:false,isReturn:false,pay:"plain"};
 function openSaleForm(){
   pullForm();
-  SALE_TMP={amount:0,category:"patients",prepay:false,isReturn:false,pay:"plain"};
+  const opts=PRODUCTS.map(p=>`<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join("");
   showModal(`
     <h3>Добавить продажу</h3>
-    <label>Сумма, ₸</label>
-    <input type="number" min="0" id="s-amount" inputmode="numeric" autofocus oninput="updateSaleNetHint()">
+    <label>Участник (имя)</label>
+    <input type="text" id="s-participant" placeholder="Напр., Гульнур" autofocus>
+    <label>Продукт</label>
+    <select id="s-product">${opts}</select>
     <label>Способ оплаты</label>
-    <select id="s-pay" onchange="updateSaleNetHint()">
-      <option value="plain">Обычная (0%)</option>
-      <option value="kaspi24">Каспи рассрочка 0024 (−15,5%)</option>
-      <option value="kaspi12">Каспи рассрочка 0012 (−15%)</option>
-      <option value="robokassa">Робокасса (−3,5%)</option>
+    <select id="s-pay">
+      <option value="Каспи наличка">Каспи наличка</option>
+      <option value="Каспи рассрочка 0024">Каспи рассрочка 0024</option>
+      <option value="Каспи рассрочка 0012">Каспи рассрочка 0012</option>
+      <option value="Робокасса">Робокасса</option>
+      <option value="Продамус">Продамус</option>
     </select>
-    <div class="hint" id="s-net-hint">Комиссия банка вычитается из суммы (нетто идёт в расчёт дохода).</div>
-    <label>Категория</label>
-    <div class="seg-2" id="s-cat">
-      <button class="on" data-v="patients" onclick="segPick('s-cat',this)">Пациенты</button>
-      <button data-v="doctors" onclick="segPick('s-cat',this)">Врачи</button>
-    </div>
-    <label>Предоплата?</label>
+    <label>Сумма в кассу, ₸ <span class="hint" style="display:inline">(сколько реально пришло)</span></label>
+    <input type="number" min="0" id="s-amount" inputmode="numeric">
+    <label>Это предоплата?</label>
     <div class="seg-2" id="s-pre">
-      <button data-v="0" class="on" onclick="segPick('s-pre',this)">Нет</button>
-      <button data-v="1" onclick="segPick('s-pre',this)">Да</button>
-    </div>
-    <label>Это возврат?</label>
-    <div class="seg-2" id="s-ret">
-      <button data-v="0" class="on" onclick="segPick('s-ret',this)">Нет</button>
-      <button data-v="1" onclick="segPick('s-ret',this)">Да (вычесть)</button>
+      <button data-v="0" class="on" onclick="segPick('s-pre',this)">Нет (полная оплата)</button>
+      <button data-v="1" onclick="segPick('s-pre',this)">Да, предоплата</button>
     </div>
     <button class="btn teal" onclick="addSale()">Добавить</button>
     <button class="btn ghost" onclick="closeModal()">Отмена</button>
@@ -1149,11 +1148,12 @@ function updateSaleNetHint(){
 function addSale(){
   const amount=Number(document.getElementById('s-amount').value)||0;
   if(amount<=0){ toast("Введите сумму"); return; }
-  const cat=document.querySelector('#s-cat button.on').dataset.v;
+  const product=document.getElementById('s-product').value;
+  const participant=(document.getElementById('s-participant').value||"").trim();
+  const payMethod=document.getElementById('s-pay').value;
   const prepay=document.querySelector('#s-pre button.on').dataset.v==="1";
-  const isReturn=document.querySelector('#s-ret button.on').dataset.v==="1";
-  const pay=(document.getElementById('s-pay')||{}).value||'plain';
-  ENTRY_DRAFT.sales.push({amount, category:cat, prepay, isReturn, pay});
+  // amount = сумма в кассу (уже нетто) → pay:'plain', чтобы комиссия не вычиталась повторно
+  ENTRY_DRAFT.sales.push({amount, category:productCategory(product), prepay, isReturn:false, pay:"plain", product, participant, payMethod});
   closeModal(); render();
 }
 
@@ -1563,8 +1563,48 @@ let AMO_MONTH = null;      // выбранный ключ месяца ('YYYY-MM
 let AMO_ENTRIES = null;    // синтетические записи продаж из amoCRM (дашборд/кабинет/рейтинг)
 let AMO_MODE = true;       // true = показывать реальные продажи из amoCRM вместо ручного ввода
 
-// Источник записей для витрин (дашборд/кабинет/рейтинг/графики): amoCRM, если загружен
-function DE(){ return (AMO_MODE && AMO_ENTRIES) ? AMO_ENTRIES : DB.entries; }
+// Источник записей для витрин (дашборд/кабинет/рейтинг/графики):
+// общая база (Supabase) — если загружена; иначе локальные записи устройства.
+function DE(){ return SHARED ? Object.keys(SHARED).reduce((a,k)=>a.concat(SHARED[k]||[]),[]) : DB.entries; }
+
+/* ---------- ОБЩАЯ БАЗА (Supabase, таблица students, строки __sales_<mid>) ---------- */
+const SUPA_URL="https://mmmtrfsestqbrjvseoea.supabase.co";
+const SUPA_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1tbXRyZnNlc3RxYnJqdnNlb2VhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMwODU3NzEsImV4cCI6MjA5ODY2MTc3MX0.Xfj-FghqW1g6bQJhKPWyjgatGa0DY5AHaYhZEaCIkxM";
+function sbHeaders(extra){ return Object.assign({"apikey":SUPA_KEY,"Authorization":"Bearer "+SUPA_KEY,"Content-Type":"application/json"}, extra||{}); }
+let SHARED=null;          // { m1:[дневные записи], m2:[...], ... } из общей базы
+let SHARED_LOADING=false;
+let SHARED_ERROR=false;
+
+// Загрузить продажи всех менеджеров из общей базы
+function loadShared(){
+  SHARED_LOADING=true; SHARED_ERROR=false;
+  fetch(SUPA_URL+"/rest/v1/students?name=like.__sales_*&select=name,notes",{headers:sbHeaders()})
+    .then(r=>{ if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); })
+    .then(rows=>{
+      const obj={};
+      (rows||[]).forEach(row=>{
+        const mid=String(row.name||"").replace("__sales_","");
+        let arr=[];
+        try{ const j=JSON.parse(row.notes||"{}"); arr=j.entries||j.sales||[]; }catch(e){ arr=[]; }
+        obj[mid]=Array.isArray(arr)? arr : [];
+      });
+      SHARED=obj; SHARED_LOADING=false; SHARED_ERROR=false; render();
+    })
+    .catch(()=>{ SHARED_LOADING=false; SHARED_ERROR=true; render(); });
+}
+// Сохранить записи одного менеджера в общую базу
+function saveSharedManager(mid){
+  if(!SHARED) SHARED={};
+  const body=JSON.stringify({notes: JSON.stringify({entries: SHARED[mid]||[]})});
+  return fetch(SUPA_URL+"/rest/v1/students?name=eq.__sales_"+encodeURIComponent(mid),
+    {method:"PATCH", headers:sbHeaders({"Prefer":"return=minimal"}), body})
+    .then(r=>{ if(!r.ok) throw new Error("HTTP "+r.status); return true; });
+}
+function sharedEntriesFor(mid){ return (SHARED && SHARED[mid]) ? SHARED[mid] : []; }
+
+/* Продукты (подтверждены Айнур 2026-07-19). Наставничество = направление «Врачи», остальное — «Пациенты». */
+const PRODUCTS=["Стандарт","С куратором индивидуально","С Айнур индивидуально","Наставничество / детская ортодонтия с нуля","Диагностика","Книжный клуб","Предложение","Тестовый период","Аденоиды","Вредные привычки","Взрослый курс","Онлайн информирование","Интенсив"];
+function productCategory(p){ return (p && p.indexOf("Наставнич")>=0) ? "doctors" : "patients"; }
 
 // Собрать «синтетические» записи продаж из amoCRM (daily_by_manager), склеив телефонию из ручных записей.
 // Продажи берём ТОЛЬКО из amoCRM (истина по деньгам), Сипуни/WhatsApp — из ручного ввода того же дня.
@@ -1595,11 +1635,11 @@ function buildAmoEntries(){
   AMO_ENTRIES=Object.keys(byKey).map(k=>byKey[k]);
 }
 
-// плашка-статус источника данных (для дашборда/кабинета)
+// плашка-статус источника данных (для дашборда/кабинета) — общая база продаж
 function amoBadgeHTML(){
-  if(AMO_LOADING) return `<div class="hint" style="margin:2px 2px 10px">⏳ Загружаю продажи из amoCRM…</div>`;
-  if(AMO && AMO_MODE) return `<div class="hint" style="margin:2px 2px 10px;color:var(--teal-d)">✅ Реальные продажи из amoCRM · обновлено ${amoFmtDateTime(AMO.generated_at)}</div>`;
-  if(AMO_ERROR) return `<div class="hint" style="margin:2px 2px 10px;color:var(--bad)">😕 Нет связи с amoCRM — показаны данные с устройства. <a href="#" onclick="amoRefresh();return false">Обновить</a></div>`;
+  if(SHARED_LOADING) return `<div class="hint" style="margin:2px 2px 10px">⏳ Загружаю продажи из общей базы…</div>`;
+  if(SHARED) return `<div class="hint" style="margin:2px 2px 10px;color:var(--teal-d)">✅ Продажи вносят менеджеры в приложении · общая база <a href="#" onclick="loadShared();return false">обновить</a></div>`;
+  if(SHARED_ERROR) return `<div class="hint" style="margin:2px 2px 10px;color:var(--bad)">⚠ Нет связи с базой — показаны данные с устройства. <a href="#" onclick="loadShared();return false">Обновить</a></div>`;
   return "";
 }
 
@@ -1816,5 +1856,6 @@ function renderAmo(v){
 
 /* старт */
 render();
-amoLoad(); // подтянуть реальные продажи из amoCRM для дашборда/кабинета
+loadShared();            // общая база продаж (менеджеры ↔ РОП) — основной источник дашборда/кабинета
+amoLoad();               // amoCRM — для отдельной справочной вкладки
 </script>
