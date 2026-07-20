@@ -400,27 +400,19 @@ function reportDaysCount(managerId, monthStr){
   DE().forEach(e=>{ if(e.managerId===managerId && workSet.has(e.date) && (e.sales||[]).length) days.add(e.date); });
   return days.size;
 }
-// ставка % за предоплаты с вебинара по нетто-сумме P
-function prepayTierRate(P){ if(P<5000000) return 0.05; if(P<7000000) return 0.06; return 0.08; }
-// Доход менеджера за месяц (все проценты — от НЕТТО, после комиссии банка)
+// Доход менеджера за месяц. Правило Айнур: предоплата → 5%, полная оплата → 12%. От «суммы в кассу».
 function managerIncome(managerId, monthStr){
   monthStr = monthStr || SEL_MONTH;
   const ent = entriesFor(managerId, new Set(monthDatesStr(monthStr)));
   const reportDays = reportDaysCount(managerId, monthStr);
   const oklad = reportDays>=21 ? 50000 : 0;
-  // Предоплаты с вебинара: пациенты + предоплата
-  const P = netSum(ent, x=> x.category!=="doctors" && x.prepay);
-  const prepayRate = prepayTierRate(P);
-  const commPrepay = prepayRate * P;
-  // Не-предоплаты: пациенты без предоплаты — 12%
-  const nonPre = netSum(ent, x=> x.category!=="doctors" && !x.prepay);
-  const commNonPre = 0.12 * nonPre;
-  // Врачи — 6%
-  const docs = netSum(ent, x=> x.category==="doctors");
-  const commDoc = 0.06 * docs;
+  const prepaySum = netSum(ent, x=> x.prepay);       // предоплаты
+  const commPrepay = RATE_PREPAY * prepaySum;         // 5%
+  const fullSum = netSum(ent, x=> !x.prepay);        // полные оплаты (не предоплата)
+  const commFull = RATE_FULL * fullSum;               // 12%
   const bonus = managerBonus(managerId, monthStr);
-  const total = oklad + commPrepay + commNonPre + commDoc + bonus;
-  return {reportDays, oklad, P, prepayRate, commPrepay, nonPre, commNonPre, docs, commDoc, bonus, total};
+  const total = oklad + commPrepay + commFull + bonus;
+  return {reportDays, oklad, prepaySum, commPrepay, fullSum, commFull, bonus, total};
 }
 // Карточка «Мой доход» (кабинет менеджера) — подробная разбивка, нетто
 function incomeCardHTML(managerId, monthStr){
@@ -431,14 +423,13 @@ function incomeCardHTML(managerId, monthStr){
   return `<div class="card"><h3>💵 Мой доход за ${escapeHtml(monthLabel(monthStr))}</h3>
     <div class="mini" style="grid-template-columns:1fr;gap:9px 12px">
       <div><span>${okladLbl}</span><b>${fmtMoney(inc.oklad)}</b></div>
-      <div><span>Предоплаты с вебинара · ${Math.round(inc.prepayRate*100)}% (нетто ${fmtMoney(inc.P)})</span><b>${fmtMoney(inc.commPrepay)}</b></div>
-      <div><span>Не-предоплаты · 12% (нетто ${fmtMoney(inc.nonPre)})</span><b>${fmtMoney(inc.commNonPre)}</b></div>
-      <div><span>Врачи · 6% (нетто ${fmtMoney(inc.docs)})</span><b>${fmtMoney(inc.commDoc)}</b></div>
+      <div><span>Предоплаты · 5% (сумма в кассу ${fmtMoney(inc.prepaySum)})</span><b>${fmtMoney(inc.commPrepay)}</b></div>
+      <div><span>Полные оплаты · 12% (сумма в кассу ${fmtMoney(inc.fullSum)})</span><b>${fmtMoney(inc.commFull)}</b></div>
       <div><span>Премия</span><b>${fmtMoney(inc.bonus)}</b></div>
     </div>
     <div class="divider"></div>
     <div class="addbar"><b>ИТОГО доход:</b><span class="tot-strong">${fmtMoney(inc.total)}</span></div>
-    <div class="hint" style="margin-top:8px">Проценты считаются от нетто-суммы (после комиссии банка/эквайринга). Оклад 50 000 ₸ — если есть отчёты в 21+ рабочий день месяца.</div>
+    <div class="hint" style="margin-top:8px">Предоплата — 5%, полная оплата — 12%, от «суммы в кассу». Оклад 50 000 ₸ — если есть отчёты в 21+ рабочий день месяца.</div>
   </div>`;
 }
 // Блок «Доход / Зарплата» для руководителя (Рейтинг) — с полем «Премия» на каждого
@@ -453,9 +444,9 @@ function salarySectionHTML(monthStr){
         <div class="tot-strong" style="font-size:17px">${fmtMoney(inc.total)}</div>
       </div>
       <div class="mini" style="grid-template-columns:1fr 1fr;margin-top:6px">
-        <div><span>Предопл. ${Math.round(inc.prepayRate*100)}%</span><b>${fmtMoney(inc.commPrepay)}</b></div>
-        <div><span>Не-предопл. 12%</span><b>${fmtMoney(inc.commNonPre)}</b></div>
-        <div><span>Врачи 6%</span><b>${fmtMoney(inc.commDoc)}</b></div>
+        <div><span>Предопл. 5%</span><b>${fmtMoney(inc.commPrepay)}</b></div>
+        <div><span>Полн. оплата 12%</span><b>${fmtMoney(inc.commFull)}</b></div>
+        <div><span>Премия</span><b>${fmtMoney(inc.bonus)}</b></div>
         <div><span>Отчётов (раб. дн.)</span><b>${inc.reportDays}</b></div>
       </div>
       <label style="margin-top:8px">Премия за ${escapeHtml(monthLabel(monthStr))}, ₸</label>
@@ -1603,8 +1594,10 @@ function saveSharedManager(mid){
 function sharedEntriesFor(mid){ return (SHARED && SHARED[mid]) ? SHARED[mid] : []; }
 
 /* Продукты (подтверждены Айнур 2026-07-19). Наставничество = направление «Врачи», остальное — «Пациенты». */
-const PRODUCTS=["Стандарт","С куратором индивидуально","С Айнур индивидуально","Наставничество / детская ортодонтия с нуля","Диагностика","Книжный клуб","Предложение","Тестовый период","Аденоиды","Вредные привычки","Взрослый курс","Онлайн информирование","Интенсив"];
+const PRODUCTS=["Стандарт","С куратором индивидуально","С куратором в группе","С Айнур индивидуально","Наставничество / детская ортодонтия с нуля","ВИП Наставничество","Диагностика","Книжный клуб","Продление","Тестовый период","Аденоиды","Вредные привычки","Взрослый курс","Онлайн информирование","Онлайн консультация","Интенсив","ОИ 5000","ОК 25000"];
 function productCategory(p){ return (p && p.indexOf("Наставнич")>=0) ? "doctors" : "patients"; }
+// Ставка зарплаты менеджера: предоплата → 5%, полная оплата (не предоплата) → 12%
+const RATE_PREPAY=0.05, RATE_FULL=0.12;
 
 // Собрать «синтетические» записи продаж из amoCRM (daily_by_manager), склеив телефонию из ручных записей.
 // Продажи берём ТОЛЬКО из amoCRM (истина по деньгам), Сипуни/WhatsApp — из ручного ввода того же дня.
