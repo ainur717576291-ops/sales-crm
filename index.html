@@ -423,8 +423,8 @@ function incomeCardHTML(managerId, monthStr){
   return `<div class="card"><h3>💵 Мой доход за ${escapeHtml(monthLabel(monthStr))}</h3>
     <div class="mini" style="grid-template-columns:1fr;gap:9px 12px">
       <div><span>${okladLbl}</span><b>${fmtMoney(inc.oklad)}</b></div>
-      <div><span>Предоплаты · 5% (сумма в кассу ${fmtMoney(inc.prepaySum)})</span><b>${fmtMoney(inc.commPrepay)}</b></div>
-      <div><span>Полные оплаты · 12% (сумма в кассу ${fmtMoney(inc.fullSum)})</span><b>${fmtMoney(inc.commFull)}</b></div>
+      <div><span>Предоплата · 5% (сумма в кассу ${fmtMoney(inc.prepaySum)})</span><b>${fmtMoney(inc.commPrepay)}</b></div>
+      <div><span>Не предоплата · 12% (сумма в кассу ${fmtMoney(inc.fullSum)})</span><b>${fmtMoney(inc.commFull)}</b></div>
       <div><span>Премия</span><b>${fmtMoney(inc.bonus)}</b></div>
     </div>
     <div class="divider"></div>
@@ -445,7 +445,7 @@ function salarySectionHTML(monthStr){
       </div>
       <div class="mini" style="grid-template-columns:1fr 1fr;margin-top:6px">
         <div><span>Предопл. 5%</span><b>${fmtMoney(inc.commPrepay)}</b></div>
-        <div><span>Полн. оплата 12%</span><b>${fmtMoney(inc.commFull)}</b></div>
+        <div><span>Не предопл. 12%</span><b>${fmtMoney(inc.commFull)}</b></div>
         <div><span>Премия</span><b>${fmtMoney(inc.bonus)}</b></div>
         <div><span>Отчётов (раб. дн.)</span><b>${inc.reportDays}</b></div>
       </div>
@@ -1113,10 +1113,10 @@ function openSaleForm(){
     </select>
     <label>Сумма в кассу, ₸ <span class="hint" style="display:inline">(сколько реально пришло)</span></label>
     <input type="number" min="0" id="s-amount" inputmode="numeric">
-    <label>Это предоплата?</label>
+    <label>Вид оплаты</label>
     <div class="seg-2" id="s-pre">
-      <button data-v="0" class="on" onclick="segPick('s-pre',this)">Нет (полная оплата)</button>
-      <button data-v="1" onclick="segPick('s-pre',this)">Да, предоплата</button>
+      <button data-v="1" class="on" onclick="segPick('s-pre',this)">Предоплата · 5%</button>
+      <button data-v="0" onclick="segPick('s-pre',this)">Не предоплата · 12%</button>
     </div>
     <button class="btn teal" onclick="addSale()">Добавить</button>
     <button class="btn ghost" onclick="closeModal()">Отмена</button>
