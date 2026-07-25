@@ -1021,8 +1021,8 @@ function renderEntry(v){
       <input type="date" id="e-date" value="${d.date}" onchange="changeDraftDate(this.value)">
     </div>
 
-    <div class="card"><h3>📞 Сипуни <span class="pill">пока вручную</span></h3>
-      <div class="hint" style="margin-top:-4px;margin-bottom:6px">Позже эти данные будут подтягиваться из Сипуни автоматически.</div>
+    <div class="card"><h3>📞 Сипуни <span class="pill good">считается автоматически</span></h3>
+      <div class="hint" style="margin-top:-4px;margin-bottom:6px">Звонки подтягиваются из amoCRM сами — заполнять не нужно. Поля ниже сработают только за те дни, по которым автоматических данных нет.</div>
       <label>Время разговоров, мин</label><input type="number" min="0" id="e-talk" value="${d.sipuni.talkMin||''}">
       <label>Звонки (всего)</label><input type="number" min="0" id="e-calls" value="${d.sipuni.calls||''}">
       <label>Успешные дозвоны (разговор &gt; 5 мин)</label><input type="number" min="0" id="e-success" value="${d.sipuni.success||''}">
@@ -1643,13 +1643,25 @@ function buildAmoEntries(){
       });
     });
   } else { AMO_ENTRIES=null; return; }
-  // телефония: сначала общая база (все менеджеры), потом записи этого устройства
+  // Звонки — автоматически из amoCRM (туда падают звонки Сипуни и второй телефонии).
+  if(AMO.calls_by_manager){
+    Object.keys(AMO.calls_by_manager).forEach(date=>{
+      const day=AMO.calls_by_manager[date]||{};
+      Object.keys(day).forEach(name=>{
+        const mid=nameToId[name]; if(!mid) return;
+        const c=day[name]||{};
+        entryFor(mid,date).sipuni={talkMin:c.talkMin||0, calls:c.calls||0,
+          success:c.success||0, dozvon:c.dozvon||0, nedozvon:c.nedozvon||0};
+      });
+    });
+  }
+  // Ручные записи: WhatsApp берём всегда (его в amoCRM нет), звонки — только если из амо не пришли
   const manual=(SHARED ? Object.keys(SHARED).reduce((a,k)=>a.concat(SHARED[k]||[]),[]) : []).concat(DB.entries||[]);
   manual.forEach(e=>{
     if(!e || !e.managerId || !e.date) return;
     if(!e.sipuni && !e.wa) return;
     const t=entryFor(e.managerId,e.date);
-    if(e.sipuni) t.sipuni=e.sipuni;
+    if(e.sipuni && !t.sipuni) t.sipuni=e.sipuni;
     if(e.wa) t.wa=e.wa;
   });
   AMO_ENTRIES=Object.keys(byKey).map(k=>byKey[k]);
