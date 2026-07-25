@@ -714,8 +714,8 @@ function defaultRoute(){ return isBoss()? "dashboard" : "cabinet"; }
 
 function renderTabs(){
   const tabs = isBoss()
-    ? [["dashboard","📊","Дашборд"],["amocrm","💹","amoCRM"],["plans","🎯","Планы"],["rating","🏆","Рейтинг"],["calendar","📅","Календарь"],["history","🗂","История"],["settings","⚙️","Настройки"]]
-    : [["cabinet","🏠","Кабинет"],["entry","✍️","Ввод"],["amocrm","💹","amoCRM"],["calendar","📅","Календарь"],["history","🗂","История"]];
+    ? [["dashboard","📊","Дашборд"],["amocrm","📗","Таблица"],["plans","🎯","Планы"],["rating","🏆","Рейтинг"],["calendar","📅","Календарь"],["history","🗂","История"],["settings","⚙️","Настройки"]]
+    : [["cabinet","🏠","Кабинет"],["entry","✍️","Ввод"],["amocrm","📗","Таблица"],["calendar","📅","Календарь"],["history","🗂","История"]];
   const bar=document.getElementById("tabbar");
   bar.innerHTML="";
   tabs.forEach(([r,ic,lbl])=>{
@@ -1540,7 +1540,7 @@ function toast(msg){
 function escapeHtml(s){ return String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
 
 /* ============================================================
-   ЭКРАН: ПРОДАЖИ ИЗ amoCRM (только чтение, данные из ./sales-data.json)
+   ЭКРАН: ПРОДАЖИ ПО ТАБЛИЦЕ (только чтение, данные из ./sales-data.json)
    Файл готовит серверная синхронизация. Схема:
    { generated_at, managers:[...], rop, recent:{today,yesterday,week,month},
      months:{'YYYY-MM':PERIOD,...}, daily_current_month:[{date,patients,doctors}] }
@@ -1551,12 +1551,16 @@ let AMO_LOADING = false;   // идёт загрузка
 let AMO_ERROR = false;     // ошибка последней загрузки
 let AMO_PERIOD = "today";  // today | yesterday | week | month
 let AMO_MONTH = null;      // выбранный ключ месяца ('YYYY-MM') для периода «Месяц»
-let AMO_ENTRIES = null;    // синтетические записи продаж из amoCRM (дашборд/кабинет/рейтинг)
-let AMO_MODE = true;       // true = показывать реальные продажи из amoCRM вместо ручного ввода
+let AMO_ENTRIES = null;    // записи продаж из таблицы (дашборд/кабинет/рейтинг)
+let AMO_MODE = true;       // true = витрины считаем по таблице, а не по ручному вводу
 
-// Источник записей для витрин (дашборд/кабинет/рейтинг/графики):
-// общая база (Supabase) — если загружена; иначе локальные записи устройства.
-function DE(){ return SHARED ? Object.keys(SHARED).reduce((a,k)=>a.concat(SHARED[k]||[]),[]) : DB.entries; }
+// Источник записей для витрин (дашборд/кабинет/рейтинг/графики).
+// ОСНОВА — Google-таблица продаж (решение Айнур 25.07.2026): она полнее всего остального.
+// Пока таблица не загрузилась — общая база (ручной ввод), в самом крайнем случае записи устройства.
+function DE(){
+  if(AMO_MODE && AMO_ENTRIES) return AMO_ENTRIES;
+  return SHARED ? Object.keys(SHARED).reduce((a,k)=>a.concat(SHARED[k]||[]),[]) : DB.entries;
+}
 
 /* ---------- ОБЩАЯ БАЗА (Supabase, таблица students, строки __sales_<mid>) ---------- */
 const SUPA_URL="https://mmmtrfsestqbrjvseoea.supabase.co";
@@ -1579,7 +1583,9 @@ function loadShared(){
         try{ const j=JSON.parse(row.notes||"{}"); arr=j.entries||j.sales||[]; }catch(e){ arr=[]; }
         obj[mid]=Array.isArray(arr)? arr : [];
       });
-      SHARED=obj; SHARED_LOADING=false; SHARED_ERROR=false; render();
+      SHARED=obj; SHARED_LOADING=false; SHARED_ERROR=false;
+      buildAmoEntries();   // подмешать телефонию из общей базы в записи по таблице
+      render();
     })
     .catch(()=>{ SHARED_LOADING=false; SHARED_ERROR=true; render(); });
 }
@@ -1599,40 +1605,62 @@ function productCategory(p){ return (p && p.indexOf("Наставнич")>=0) ? 
 // Ставка зарплаты менеджера: предоплата → 5%, полная оплата (не предоплата) → 12%
 const RATE_PREPAY=0.05, RATE_FULL=0.12;
 
-// Собрать «синтетические» записи продаж из amoCRM (daily_by_manager), склеив телефонию из ручных записей.
-// Продажи берём ТОЛЬКО из amoCRM (истина по деньгам), Сипуни/WhatsApp — из ручного ввода того же дня.
+// Собрать записи продаж из sales-data.json, склеив телефонию из ручных записей.
+// Деньги берём ТОЛЬКО из таблицы (истина по продажам), Сипуни/WhatsApp — из ручного ввода того же дня.
+// sales_rows (построчно: продукт, сумма, предоплата) — основной путь; daily_by_manager —
+// запасной, если файл собран старой синхронизацией и построчных данных в нём нет.
 function buildAmoEntries(){
-  if(!AMO || !AMO.daily_by_manager){ AMO_ENTRIES=null; return; }
+  if(!AMO){ AMO_ENTRIES=null; return; }
   const nameToId={}; DB.config.managers.forEach(m=>{ nameToId[m.name]=m.id; });
   const byKey={}; // "mid|date" -> запись
-  const dbm=AMO.daily_by_manager;
-  Object.keys(dbm).forEach(date=>{
-    const cell=dbm[date]||{};
-    Object.keys(cell).forEach(name=>{
-      const mid=nameToId[name]; if(!mid) return; // имя не среди менеджеров (РОП/отдел заботы) — пропускаем
-      const c=cell[name]||{};
-      const sales=[];
-      [["patients","patients"],["doctors","doctors"]].forEach(([k,cat])=>{
-        const a=c[k]||[0,0]; const sum=Number(a[0])||0, cnt=Number(a[1])||0;
-        if(cnt>0){ const each=sum/cnt; for(let i=0;i<cnt;i++) sales.push({amount:each,category:cat,prepay:true,isReturn:false,pay:'plain'}); }
-        else if(sum>0){ sales.push({amount:sum,category:cat,prepay:true,isReturn:false,pay:'plain'}); }
+  function entryFor(mid,date){
+    const key=mid+"|"+date;
+    if(!byKey[key]) byKey[key]={id:'tbl_'+mid+'_'+date, managerId:mid, date:date, sales:[]};
+    return byKey[key];
+  }
+  if(Array.isArray(AMO.sales_rows) && AMO.sales_rows.length){
+    AMO.sales_rows.forEach(s=>{
+      const mid=nameToId[s.manager]; if(!mid) return;
+      entryFor(mid,s.date).sales.push({
+        amount:Number(s.amount)||0, category:s.category||'patients',
+        prepay:!!s.prepay, isReturn:false, pay:'plain',
+        product:s.product||'', participant:s.client||'', payMethod:s.payMethod||''
       });
-      byKey[mid+"|"+date]={id:'amo_'+mid+'_'+date, managerId:mid, date:date, sales:sales};
     });
-  });
-  (DB.entries||[]).forEach(e=>{
-    const key=e.managerId+"|"+e.date;
-    if(byKey[key]){ if(e.sipuni) byKey[key].sipuni=e.sipuni; if(e.wa) byKey[key].wa=e.wa; }
-    else byKey[key]={id:'man_'+e.managerId+'_'+e.date, managerId:e.managerId, date:e.date, sales:[], sipuni:e.sipuni, wa:e.wa};
+  } else if(AMO.daily_by_manager){
+    const dbm=AMO.daily_by_manager;
+    Object.keys(dbm).forEach(date=>{
+      const cell=dbm[date]||{};
+      Object.keys(cell).forEach(name=>{
+        const mid=nameToId[name]; if(!mid) return; // имя не среди менеджеров (РОП/отдел заботы) — пропускаем
+        const c=cell[name]||{};
+        [["patients","patients"],["doctors","doctors"]].forEach(([k,cat])=>{
+          const a=c[k]||[0,0]; const sum=Number(a[0])||0, cnt=Number(a[1])||0;
+          const sales=entryFor(mid,date).sales;
+          if(cnt>0){ const each=sum/cnt; for(let i=0;i<cnt;i++) sales.push({amount:each,category:cat,prepay:true,isReturn:false,pay:'plain'}); }
+          else if(sum>0){ sales.push({amount:sum,category:cat,prepay:true,isReturn:false,pay:'plain'}); }
+        });
+      });
+    });
+  } else { AMO_ENTRIES=null; return; }
+  // телефония: сначала общая база (все менеджеры), потом записи этого устройства
+  const manual=(SHARED ? Object.keys(SHARED).reduce((a,k)=>a.concat(SHARED[k]||[]),[]) : []).concat(DB.entries||[]);
+  manual.forEach(e=>{
+    if(!e || !e.managerId || !e.date) return;
+    if(!e.sipuni && !e.wa) return;
+    const t=entryFor(e.managerId,e.date);
+    if(e.sipuni) t.sipuni=e.sipuni;
+    if(e.wa) t.wa=e.wa;
   });
   AMO_ENTRIES=Object.keys(byKey).map(k=>byKey[k]);
 }
 
-// плашка-статус источника данных (для дашборда/кабинета) — общая база продаж
+// плашка-статус источника данных (для дашборда/кабинета) — Google-таблица продаж
 function amoBadgeHTML(){
-  if(SHARED_LOADING) return `<div class="hint" style="margin:2px 2px 10px">⏳ Загружаю продажи из общей базы…</div>`;
-  if(SHARED) return `<div class="hint" style="margin:2px 2px 10px;color:var(--teal-d)">✅ Продажи вносят менеджеры в приложении · общая база <a href="#" onclick="loadShared();return false">обновить</a></div>`;
-  if(SHARED_ERROR) return `<div class="hint" style="margin:2px 2px 10px;color:var(--bad)">⚠ Нет связи с базой — показаны данные с устройства. <a href="#" onclick="loadShared();return false">Обновить</a></div>`;
+  if(AMO_LOADING) return `<div class="hint" style="margin:2px 2px 10px">⏳ Загружаю продажи из таблицы…</div>`;
+  if(AMO_MODE && AMO_ENTRIES) return `<div class="hint" style="margin:2px 2px 10px;color:var(--teal-d)">✅ Продажи из Google-таблицы · обновлено ${amoFmtDateTime(AMO&&AMO.generated_at)} <a href="#" onclick="amoRefresh();return false">обновить</a></div>`;
+  if(AMO_ERROR) return `<div class="hint" style="margin:2px 2px 10px;color:var(--bad)">⚠ Не удалось загрузить таблицу — показан ручной ввод. <a href="#" onclick="amoRefresh();return false">Обновить</a></div>`;
+  if(SHARED) return `<div class="hint" style="margin:2px 2px 10px">Показан ручной ввод менеджеров (общая база)</div>`;
   return "";
 }
 
@@ -1765,13 +1793,13 @@ function renderAmo(v){
   if(!AMO && !AMO_LOADING && !AMO_ERROR) amoLoad();
 
   if(AMO_LOADING){
-    v.innerHTML=`<h2 class="screen-title">Продажи из amoCRM</h2>
-      <div class="card"><div class="empty-state">⏳ Загружаем данные из amoCRM…</div></div>`;
+    v.innerHTML=`<h2 class="screen-title">Продажи по таблице</h2>
+      <div class="card"><div class="empty-state">⏳ Загружаем данные из таблицы…</div></div>`;
     return;
   }
   if(AMO_ERROR || !AMO){
-    v.innerHTML=`<h2 class="screen-title">Продажи из amoCRM</h2>
-      <div class="card"><div class="empty-state">😕 Не удалось загрузить данные из amoCRM.<br>Проверьте синхронизацию и попробуйте ещё раз.<br><br>
+    v.innerHTML=`<h2 class="screen-title">Продажи по таблице</h2>
+      <div class="card"><div class="empty-state">😕 Не удалось загрузить данные из таблицы.<br>Попробуйте обновить ещё раз.<br><br>
         <button class="btn ghost" onclick="amoRefresh()" style="max-width:220px;margin:0 auto">🔄 Попробовать снова</button></div></div>`;
     return;
   }
@@ -1783,10 +1811,10 @@ function renderAmo(v){
   const deptCnt=mgrs.reduce((s,m)=>s+m.cnt,0);
   const topSum=mgrs.reduce((s,m)=>Math.max(s,m.sum),0);
 
-  let html=`<h2 class="screen-title">Продажи из amoCRM</h2>
+  let html=`<h2 class="screen-title">Продажи по таблице</h2>
     <div class="card" style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 14px">
       <div style="min-width:0">
-        <div style="font-weight:800;font-size:15px">📊 Данные из amoCRM</div>
+        <div style="font-weight:800;font-size:15px">📗 Данные из Google-таблицы</div>
         <div class="hint" style="margin-top:2px">обновлено: ${escapeHtml(amoFmtDateTime(AMO.generated_at))}</div>
       </div>
       <button class="btn ghost sm" onclick="amoRefresh()" style="flex:none">🔄 Обновить</button>
@@ -1850,5 +1878,5 @@ function renderAmo(v){
 /* старт */
 render();
 loadShared();            // общая база продаж (менеджеры ↔ РОП) — основной источник дашборда/кабинета
-amoLoad();               // amoCRM — для отдельной справочной вкладки
+amoLoad();               // Google-таблица — основной источник продаж
 </script>
