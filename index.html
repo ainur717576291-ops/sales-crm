@@ -1650,6 +1650,10 @@ function buildAmoEntries(){
       Object.keys(day).forEach(name=>{
         const mid=nameToId[name]; if(!mid) return;
         const c=day[name]||{};
+        // Только если тут есть РЕАЛЬНЫЕ данные — иначе пустая/нулевая запись из amo
+        // тихо перекрывала бы то, что менеджер ввёл вручную (баг, из-за которого
+        // «цифра не сохранялась» — фактически сохранялась, но пряталась за нулём из amo).
+        if(!(c.talkMin||c.calls||c.success||c.dozvon||c.nedozvon)) return;
         entryFor(mid,date).sipuni={talkMin:c.talkMin||0, calls:c.calls||0,
           success:c.success||0, dozvon:c.dozvon||0, nedozvon:c.nedozvon||0};
       });
