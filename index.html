@@ -1288,15 +1288,17 @@ function renderRating(v){
     html+=`<div class="empty-state">За ${escapeHtml(monthLabel(SEL_MONTH))} продаж пока нет.<br>Как только появятся оплаты — здесь выстроится рейтинг менеджеров 🌟</div>`;
   } else {
     rows.forEach((r,i)=>{
-      const p=pct(r.val, r.plan);
       const isMedal=i<3 && r.val>0;
       const plc= isMedal? `<div class="plc medal">${medals[i]}</div>` : `<div class="plc">${i+1}</div>`;
       const top= (i===0 && r.val>0)? " top" : "";
+      const sub = FLAT_RATE_MANAGERS[r.id]!=null
+        ? `${r.pays} оплат`
+        : `${pct(r.val, r.plan)}% плана · ${r.pays} оплат`;
       html+=`<div class="rank${top}">
         ${plc}
         <div class="r-body">
           <div class="r-nm">${escapeHtml(r.name)}</div>
-          <div class="r-sub">${p}% плана · ${r.pays} оплат</div>
+          <div class="r-sub">${sub}</div>
         </div>
         <div class="r-amt">${fmtMoney(r.val)}</div>
       </div>`;
