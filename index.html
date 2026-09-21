@@ -330,6 +330,14 @@ function datesForPeriod(period){
   if(period==="week"){ // последние 7 дней
     const arr=[]; for(let i=6;i>=0;i--){ const d=new Date(now); d.setDate(d.getDate()-i); arr.push(ymd(d)); } return arr;
   }
+  if(period==="custom"){
+    if(!CUSTOM_FROM || !CUSTOM_TO) return [todayStr()];
+    let from=CUSTOM_FROM, to=CUSTOM_TO;
+    if(from>to){ const t=from; from=to; to=t; }
+    const arr=[]; let d=new Date(from+"T00:00:00"); const end=new Date(to+"T00:00:00");
+    while(d<=end){ arr.push(ymd(d)); d.setDate(d.getDate()+1); }
+    return arr;
+  }
   // month = выбранный месяц SEL_MONTH (по умолчанию — текущий)
   return monthDatesStr(SEL_MONTH);
 }
@@ -707,6 +715,33 @@ function deptTrendSVG(monthStr){
    ============================================================ */
 let ROUTE = null;
 let PERIOD = "today";
+let CUSTOM_FROM=null, CUSTOM_TO=null; // «Свой период» — общий выбор дат для дашборда и истории
+function ensureCustomDefaults(){
+  if(!CUSTOM_FROM || !CUSTOM_TO){
+    const t=new Date(); CUSTOM_TO=ymd(t);
+    const f=new Date(t); f.setDate(f.getDate()-6); CUSTOM_FROM=ymd(f);
+  }
+}
+function setCustomRange(from, to){
+  if(from) CUSTOM_FROM=from;
+  if(to) CUSTOM_TO=to;
+  render();
+}
+function customRangeHTML(){
+  return `<div class="card" style="padding:12px 14px">
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <div style="flex:1;min-width:130px"><label>С</label><input type="date" value="${CUSTOM_FROM||''}" max="${todayStr()}" onchange="setCustomRange(this.value, null)"></div>
+      <div style="flex:1;min-width:130px"><label>По</label><input type="date" value="${CUSTOM_TO||''}" max="${todayStr()}" onchange="setCustomRange(null, this.value)"></div>
+    </div>
+  </div>`;
+}
+// общий переключатель периода: сегодня/вчера/неделя/месяц/свой период
+function periodSegGeneric(varName, current){
+  const items=[["today","Сегодня"],["yesterday","Вчера"],["week","Неделя"],["month","Месяц"],["custom","Даты"]];
+  return `<div class="seg">${items.map(([k,l])=>
+    `<button class="${current===k?'on':''}" onclick="${varName}='${k}';${k==='custom'?'ensureCustomDefaults();':''}render()">${l}</button>`
+  ).join("")}</div>`;
+}
 let PREVIEW_MID = null; // РОП смотрит кабинет менеджера, не выходя из своей роли
 
 function render(){
@@ -799,10 +834,7 @@ function loginManager(id){ setSession({role:"manager", managerId:id}); ROUTE=nul
 /* ============================================================
    ЭКРАН 1: ДАШБОРД (Руководитель)
    ============================================================ */
-function periodSeg(){
-  const items=[["today","Сегодня"],["yesterday","Вчера"],["week","Неделя"],["month","Месяц"]];
-  return `<div class="seg">${items.map(([k,l])=>`<button class="${PERIOD===k?'on':''}" onclick="PERIOD='${k}';render()">${l}</button>`).join("")}</div>`;
-}
+function periodSeg(){ return periodSegGeneric('PERIOD', PERIOD); }
 // компактный навигатор месяцев (для периода «Месяц» и экрана «Рейтинг»)
 function monthNav(){
   const atCur = SEL_MONTH>=curMonthStr();
@@ -846,7 +878,8 @@ function renderDashboard(v){
   let html = `<h2 class="screen-title">Дашборд отдела</h2>${deviceNote()}
     ${amoBadgeHTML()}
     ${periodSeg()}
-    ${PERIOD==="month"? monthNav() : ""}`;
+    ${PERIOD==="month"? monthNav() : ""}
+    ${PERIOD==="custom"? customRangeHTML() : ""}`;
 
   // 1) Ряд KPI-плиток (большие цветные числа)
   html+=`<div class="kpi-grid" style="margin-bottom:12px">
@@ -951,7 +984,11 @@ function renderDashboard(v){
   v.innerHTML=html;
 }
 function resolveHelp(id){ const h=DB.help.find(x=>x.id===id); if(h){ h.resolved=true; save(); render(); } }
-function periodLabel(p){ return {today:"Сегодня",yesterday:"Вчера",week:"Неделя",month:"Месяц"}[p]; }
+function fmtDShort(ds){ const [y,m,d]=String(ds).split('-').map(Number); return d+' '+RU_MONTHS_GEN[m-1]; }
+function periodLabel(p){
+  if(p==="custom") return (CUSTOM_FROM && CUSTOM_TO)? fmtDShort(CUSTOM_FROM)+" – "+fmtDShort(CUSTOM_TO) : "Свой период";
+  return {today:"Сегодня",yesterday:"Вчера",week:"Неделя",month:"Месяц"}[p];
+}
 
 /* ============================================================
    ЭКРАН 2: МОЙ КАБИНЕТ (Менеджер)
@@ -1350,7 +1387,6 @@ function renderHistory(v){
   else if(HIST_MGR!=="all"){ entries=entries.filter(e=>e.managerId===HIST_MGR); }
   entries.sort((a,b)=> b.date.localeCompare(a.date) || managerName(a.managerId).localeCompare(managerName(b.managerId)));
 
-  const items=[["today","Сегодня"],["yesterday","Вчера"],["week","Неделя"],["month","Месяц"]];
   let mgrFilter="";
   if(boss){
     mgrFilter=`<label>Менеджер</label><select id="h-mgr" onchange="HIST_MGR=this.value;render()">
@@ -1360,8 +1396,9 @@ function renderHistory(v){
   }
 
   let html=`<h2 class="screen-title">История</h2>${deviceNote()}
-    <div class="seg">${items.map(([k,l])=>`<button class="${HIST_PERIOD===k?'on':''}" onclick="HIST_PERIOD='${k}';render()">${l}</button>`).join("")}</div>
+    ${periodSegGeneric('HIST_PERIOD', HIST_PERIOD)}
     ${HIST_PERIOD==="month"? monthNav() : ""}
+    ${HIST_PERIOD==="custom"? customRangeHTML() : ""}
     ${mgrFilter?`<div class="card">${mgrFilter}</div>`:""}`;
 
   if(!entries.length){ html+=`<div class="empty-state">Записей за период нет</div>`; v.innerHTML=html; return; }
@@ -1387,7 +1424,7 @@ function renderHistory(v){
       <div class="mini" style="margin-top:8px">
         <div><span>Разговоры</span><b>${s.talkMin||0} мин</b></div>
         <div><span>Звонки</span><b>${s.calls||0}</b></div>
-        <div><span>WhatsApp</span><b>${w.calls||0} зв · ${w.timeMin||0} мин</b></div>
+        <div><span>${FLAT_RATE_MANAGERS[e.managerId]!=null?'SMS':'WhatsApp'}</span><b>${FLAT_RATE_MANAGERS[e.managerId]!=null? (w.sms||0) : (w.calls||0)+' зв · '+(w.timeMin||0)+' мин'}</b></div>
         <div><span>Счета</span><b>${e.invoices||0}</b></div>
         <div><span>Оплат</span><b>${payCount([e])}</b></div>
         <div><span>Возвраты</span><b>${(e.sales||[]).filter(x=>x.isReturn).length}</b></div>
