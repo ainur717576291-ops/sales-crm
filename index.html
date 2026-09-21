@@ -388,6 +388,7 @@ function categorySplit(entries){
 // План по умолчанию для каждого менеджера = 5 000 000 ₸ (минимум)
 const DEFAULT_PLAN = 5000000;
 function managerPlan(managerId){
+  if(managerId==='m4') return 0; // Жамиля — план не нужен (звонки/забота, не продажи)
   const v=Number((DB.plans[managerId]||{}).monthPlan);
   return v>0? v : DEFAULT_PLAN;
 }
@@ -401,9 +402,18 @@ function reportDaysCount(managerId, monthStr){
   return days.size;
 }
 // Доход менеджера за месяц. Правило Айнур: предоплата → 5%, полная оплата → 12%. От «суммы в кассу».
+const FLAT_RATE_MANAGERS = {m4: 0.30}; // Жамиля: ЗП = 30% от суммы продаж, без оклада и тиров
 function managerIncome(managerId, monthStr){
   monthStr = monthStr || SEL_MONTH;
   const ent = entriesFor(managerId, new Set(monthDatesStr(monthStr)));
+  if(FLAT_RATE_MANAGERS[managerId]!=null){
+    const rate=FLAT_RATE_MANAGERS[managerId];
+    const sold=salesSum(ent);
+    const comm=rate*sold;
+    const bonus=managerBonus(managerId, monthStr);
+    const total=comm+bonus;
+    return {reportDays:0, oklad:0, prepaySum:0, commPrepay:0, fullSum:sold, commFull:comm, bonus, total, flatRate:rate, flatSold:sold};
+  }
   const reportDays = reportDaysCount(managerId, monthStr);
   const oklad = reportDays>=21 ? 50000 : 0;
   const prepaySum = netSum(ent, x=> x.prepay);       // предоплаты
@@ -417,6 +427,17 @@ function managerIncome(managerId, monthStr){
 // Карточка «Мой доход» (кабинет менеджера) — подробная разбивка, нетто
 function incomeCardHTML(managerId, monthStr){
   const inc=managerIncome(managerId, monthStr);
+  if(FLAT_RATE_MANAGERS[managerId]!=null){
+    return `<div class="card"><h3>💵 ЗП за ${escapeHtml(monthLabel(monthStr))}</h3>
+      <div class="mini" style="grid-template-columns:1fr;gap:9px 12px">
+        <div><span>Продажи · ${Math.round(inc.flatRate*100)}% (сумма ${fmtMoney(inc.flatSold)})</span><b>${fmtMoney(inc.commFull)}</b></div>
+        <div><span>Премия</span><b>${fmtMoney(inc.bonus)}</b></div>
+      </div>
+      <div class="divider"></div>
+      <div class="addbar"><b>ИТОГО ЗП:</b><span class="tot-strong">${fmtMoney(inc.total)}</span></div>
+      <div class="hint" style="margin-top:8px">ЗП = ${Math.round(inc.flatRate*100)}% от суммы продаж, которые вы вносите вручную.</div>
+    </div>`;
+  }
   const okladLbl = inc.oklad>0
     ? `Оклад <span class="pill good">отчётов: ${inc.reportDays} дн.</span>`
     : `Оклад <span class="pill bad">мало отчётов: ${inc.reportDays}/21</span>`;
@@ -438,16 +459,24 @@ function salarySectionHTML(monthStr){
     <div class="hint" style="margin-top:-4px;margin-bottom:6px">Проценты — от нетто (после комиссии банка). Впишите «Премию» — сохраняется сразу.</div>`;
   DB.config.managers.forEach(m=>{
     const inc=managerIncome(m.id, monthStr);
+    const flat=FLAT_RATE_MANAGERS[m.id];
+    const badge = flat!=null
+      ? `<span class="pill good" style="margin-left:2px">${Math.round(flat*100)}% от продаж</span>`
+      : `<span class="pill ${inc.oklad>0?'good':'bad'}" style="margin-left:2px">оклад ${inc.oklad>0?fmtMoney(inc.oklad):'0'}</span>`;
+    const miniRows = flat!=null
+      ? `<div><span>Продажи</span><b>${fmtMoney(inc.flatSold)}</b></div>
+        <div><span>Премия</span><b>${fmtMoney(inc.bonus)}</b></div>`
+      : `<div><span>Предопл. 5%</span><b>${fmtMoney(inc.commPrepay)}</b></div>
+        <div><span>Не предопл. 12%</span><b>${fmtMoney(inc.commFull)}</b></div>
+        <div><span>Премия</span><b>${fmtMoney(inc.bonus)}</b></div>
+        <div><span>Отчётов (раб. дн.)</span><b>${inc.reportDays}</b></div>`;
     h+=`<div style="padding:11px 0;border-bottom:1px solid var(--line)">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-        <div class="l-main">${escapeHtml(m.name)} <span class="pill ${inc.oklad>0?'good':'bad'}" style="margin-left:2px">оклад ${inc.oklad>0?fmtMoney(inc.oklad):'0'}</span></div>
+        <div class="l-main">${escapeHtml(m.name)} ${badge}</div>
         <div class="tot-strong" style="font-size:17px">${fmtMoney(inc.total)}</div>
       </div>
       <div class="mini" style="grid-template-columns:1fr 1fr;margin-top:6px">
-        <div><span>Предопл. 5%</span><b>${fmtMoney(inc.commPrepay)}</b></div>
-        <div><span>Не предопл. 12%</span><b>${fmtMoney(inc.commFull)}</b></div>
-        <div><span>Премия</span><b>${fmtMoney(inc.bonus)}</b></div>
-        <div><span>Отчётов (раб. дн.)</span><b>${inc.reportDays}</b></div>
+        ${miniRows}
       </div>
       <label style="margin-top:8px">Премия за ${escapeHtml(monthLabel(monthStr))}, ₸</label>
       <input type="number" min="0" inputmode="numeric" value="${inc.bonus||''}" placeholder="0" onchange="setBonus('${m.id}', this.value)">
@@ -879,22 +908,30 @@ function renderDashboard(v){
     const eMonth=entriesFor(m.id, monthSet);
     const sold=salesSum(ePeriod);
     const soldMonth=salesSum(eMonth);
-    const plan=managerPlan(m.id);
-    const p=pct(soldMonth, plan);
+    const noPlan = FLAT_RATE_MANAGERS[m.id]!=null;
+    const p=pct(soldMonth, managerPlan(m.id));
+    const ring = noPlan? "" : `<div class="mgr-ring">${gaugeSVG(p, null, {size:'sm'})}</div>`;
+    const rightBadge = noPlan
+      ? `<span class="pill good">ЗП ${fmtMoney(managerIncome(m.id, SEL_MONTH).total)}</span>`
+      : `<span class="pill ${p>=100?'good':(p<50?'bad':'warn')}">${p}% плана</span>`;
+    const barRow = noPlan? "" : `<div class="bar ${p<70?'warn':''}" style="margin-top:6px"><span style="width:${Math.min(100,p)}%"></span></div>`;
+    const lastRow = noPlan
+      ? `<div><span>SMS</span><b>${sumField(ePeriod,'wa.sms')}</b></div>`
+      : `<div><span>WhatsApp</span><b>${sumField(ePeriod,'wa.timeMin')} мин</b></div>`;
     html+=`<div class="mgr-card" style="cursor:pointer" onclick="previewManager('${m.id}')">
       <div class="mgr-head">
-        <div class="mgr-ring">${gaugeSVG(p, null, {size:'sm'})}</div>
+        ${ring}
         <div style="flex:1;min-width:0">
           <div class="top"><div class="nm"><i style="background:${mgrColor(i)}"></i>${escapeHtml(m.name)}</div>
-            <span class="pill ${p>=100?'good':(p<50?'bad':'warn')}">${p}% плана</span></div>
-          <div class="bar ${p<70?'warn':''}" style="margin-top:6px"><span style="width:${Math.min(100,p)}%"></span></div>
+            ${rightBadge}</div>
+          ${barRow}
         </div>
       </div>
       <div class="mini">
         <div><span>Продажи</span><b>${fmtMoney(sold)}</b></div>
         <div><span>Оплат</span><b>${payCount(ePeriod)}</b></div>
         <div><span>На линии (Сипуни)</span><b>${sumField(ePeriod,'sipuni.talkMin')} мин</b></div>
-        <div><span>WhatsApp</span><b>${sumField(ePeriod,'wa.timeMin')} мин</b></div>
+        ${lastRow}
       </div>
       <div class="hint" style="text-align:right;margin-top:6px;color:var(--blue)">Открыть кабинет ›</div></div>`;
   });
@@ -922,6 +959,7 @@ function periodLabel(p){ return {today:"Сегодня",yesterday:"Вчера",w
 function renderCabinet(v){
   const preview = isBoss() && PREVIEW_MID;
   const mid = preview ? PREVIEW_MID : SESSION.managerId;
+  if(FLAT_RATE_MANAGERS[mid]!=null){ renderCabinetFlat(v, mid, preview); return; }
   const monthSet=new Set(datesForPeriod("month"));
   const eMonth=entriesFor(mid, monthSet);
   const plan=managerPlan(mid);
@@ -992,6 +1030,29 @@ function renderCabinet(v){
              :`<button class="btn warn" onclick="openHelp()">🆘 Нужна помощь руководителя</button>`}`;
   v.innerHTML=html;
 }
+// Кабинет для менеджеров без плана (Жамиля): без гейджа/прогноза — только продажи и ЗП
+function renderCabinetFlat(v, mid, preview){
+  const monthSet=new Set(datesForPeriod("month"));
+  const eMonth=entriesFor(mid, monthSet);
+  const sold=salesSum(eMonth);
+  const pays=payCount(eMonth);
+  let html=`${preview?`<button class="btn ghost" style="margin-bottom:10px" onclick="closePreview()">← Назад к дашборду</button>
+    <div class="card" style="background:#eef3ff;border:1px solid #cddbff"><b>👀 Просмотр кабинета менеджера</b><br><span class="hint">Вы смотрите как «${escapeHtml(managerName(mid))}». Ваша роль — Руководитель.</span></div>`:""}
+    <h2 class="screen-title">${preview?"Кабинет менеджера":"Мой кабинет"}</h2>${preview?"":deviceNote()}
+    <div class="card"><h3>${escapeHtml(managerName(mid))} · ${escapeHtml(monthLabel(SEL_MONTH))}</h3>
+      <div class="kpis">
+        <div class="kpi"><div class="k-lbl">Продано</div><div class="k-val">${fmtMoney(sold)}</div></div>
+        <div class="kpi"><div class="k-lbl">Оплат</div><div class="k-val">${pays}</div></div>
+      </div>
+    </div>
+    ${incomeCardHTML(mid, SEL_MONTH)}
+    <div class="card"><h3>📊 Продажи по дням (месяц)</h3>
+      ${monthBarSVG(mid)}
+    </div>
+    ${preview?`<button class="btn ghost" onclick="closePreview()">← Назад к дашборду</button>`
+             :`<button class="btn warn" onclick="openHelp()">🆘 Нужна помощь руководителя</button>`}`;
+  v.innerHTML=html;
+}
 function previewManager(id){ if(!isBoss()) return; PREVIEW_MID=id; ROUTE="cabinet"; render(); }
 function closePreview(){ PREVIEW_MID=null; ROUTE="dashboard"; render(); }
 
@@ -1014,6 +1075,30 @@ function renderEntry(v){
   if(!salesList) salesList=`<div class="empty-state">Продаж пока нет</div>`;
 
   const totalDay=salesSum([d]);
+  const isFlat = FLAT_RATE_MANAGERS[mid]!=null;
+
+  const waBlock = isFlat
+    ? `<div class="card"><h3>💬 WhatsApp (личный) <span class="pill">всегда вручную</span></h3>
+      <label>Количество SMS</label><input type="number" min="0" id="e-wasms" value="${d.wa.sms||''}">
+    </div>`
+    : `<div class="card"><h3>💬 WhatsApp (личный) <span class="pill">всегда вручную</span></h3>
+      <div class="hint" style="margin-top:-4px;margin-bottom:6px">Звонки иностранным клиентам с личного WhatsApp.</div>
+      <label>Звонки</label><input type="number" min="0" id="e-wacalls" value="${d.wa.calls||''}">
+      <label>Время, мин</label><input type="number" min="0" id="e-watime" value="${d.wa.timeMin||''}">
+    </div>`;
+
+  const salesBlock = isFlat
+    ? `<div class="card"><h3>💰 Продажи за день</h3>
+      <label>Количество продаж</label><input type="number" min="0" id="e-zhcount" value="${(d.sales||[]).length||''}">
+      <label>Сумма продаж, ₸</label><input type="number" min="0" id="e-zhsum" value="${totalDay||''}">
+      <div class="hint">ЗП считается автоматически — ${Math.round(FLAT_RATE_MANAGERS[mid]*100)}% от суммы продаж.</div>
+    </div>`
+    : `<div class="card"><h3>💰 Продажи за день</h3>
+      ${salesList}
+      <div class="divider"></div>
+      <div class="addbar"><b>Итого за день:</b><span class="tot-strong">${fmtMoney(totalDay)}</span></div>
+      <button class="btn ghost" onclick="openSaleForm()">+ Добавить продажу</button>
+    </div>`;
 
   v.innerHTML=`<h2 class="screen-title">Ввести данные</h2>${deviceNote()}
     <div class="card">
@@ -1033,22 +1118,13 @@ function renderEntry(v){
       <div class="hint">Недозвон = не дозвонился.</div>
     </div>
 
-    <div class="card"><h3>💬 WhatsApp (личный) <span class="pill">всегда вручную</span></h3>
-      <div class="hint" style="margin-top:-4px;margin-bottom:6px">Звонки иностранным клиентам с личного WhatsApp.</div>
-      <label>Звонки</label><input type="number" min="0" id="e-wacalls" value="${d.wa.calls||''}">
-      <label>Время, мин</label><input type="number" min="0" id="e-watime" value="${d.wa.timeMin||''}">
-    </div>
+    ${waBlock}
 
     <div class="card"><h3>🧾 Счета выставленные</h3>
       <input type="number" min="0" id="e-inv" value="${d.invoices||''}">
     </div>
 
-    <div class="card"><h3>💰 Продажи за день</h3>
-      ${salesList}
-      <div class="divider"></div>
-      <div class="addbar"><b>Итого за день:</b><span class="tot-strong">${fmtMoney(totalDay)}</span></div>
-      <button class="btn ghost" onclick="openSaleForm()">+ Добавить продажу</button>
-    </div>
+    ${salesBlock}
 
     <button class="btn teal" onclick="saveEntry()">💾 Сохранить</button>
     <button class="btn warn" onclick="openHelp()">🆘 Нужна помощь руководителя</button>`;
@@ -1056,7 +1132,17 @@ function renderEntry(v){
 function blankDraft(mid, date){
   return {id:"e_"+mid+"_"+date, date, managerId:mid,
     sipuni:{talkMin:0,calls:0,success:0,dozvon:0,nedozvon:0},
-    wa:{calls:0,timeMin:0}, invoices:0, sales:[]};
+    wa: FLAT_RATE_MANAGERS[mid]!=null? {sms:0} : {calls:0,timeMin:0}, invoices:0, sales:[]};
+}
+// разбить общую сумму продаж на count равных (по возможности) сделок — чтобы «Оплат»/средний чек считались как обычно
+function splitEven(sum, count){
+  if(!count || count<=0) return [];
+  const base=Math.floor(sum/count), rem=sum-base*count;
+  const arr=[];
+  for(let i=0;i<count;i++){
+    arr.push({amount:base+(i<rem?1:0), category:'patients', prepay:false, isReturn:false, pay:'plain', product:'', participant:''});
+  }
+  return arr;
 }
 function loadDraft(mid, date){
   const ex=sharedEntriesFor(mid).find(e=>e.date===date);
@@ -1067,7 +1153,12 @@ function pullForm(){
   if(!ENTRY_DRAFT) return;
   const g=id=>{ const el=document.getElementById(id); return el? (Number(el.value)||0):0; };
   ENTRY_DRAFT.sipuni={talkMin:g('e-talk'),calls:g('e-calls'),success:g('e-success'),dozvon:g('e-dozvon'),nedozvon:g('e-nedozvon')};
-  ENTRY_DRAFT.wa={calls:g('e-wacalls'),timeMin:g('e-watime')};
+  if(FLAT_RATE_MANAGERS[ENTRY_DRAFT.managerId]!=null){
+    ENTRY_DRAFT.wa={sms:g('e-wasms')};
+    if(document.getElementById('e-zhcount')) ENTRY_DRAFT.sales=splitEven(g('e-zhsum'), g('e-zhcount'));
+  } else {
+    ENTRY_DRAFT.wa={calls:g('e-wacalls'),timeMin:g('e-watime')};
+  }
   ENTRY_DRAFT.invoices=g('e-inv');
 }
 function changeDraftDate(date){
@@ -1152,11 +1243,12 @@ function addSale(){
    ЭКРАН 4: ПЛАНЫ (Руководитель)
    ============================================================ */
 function renderPlans(v){
-  let rows=DB.config.managers.map(m=>`
+  const planManagers=DB.config.managers.filter(m=>FLAT_RATE_MANAGERS[m.id]==null);
+  let rows=planManagers.map(m=>`
     <label>${escapeHtml(m.name)} — план месяца, ₸</label>
     <input type="number" min="0" id="plan-${m.id}" value="${managerPlan(m.id)||''}">
   `).join("");
-  const sumPlans=DB.config.managers.reduce((s,m)=>s+managerPlan(m.id),0);
+  const sumPlans=planManagers.reduce((s,m)=>s+managerPlan(m.id),0);
   v.innerHTML=`<h2 class="screen-title">Планы</h2>
     <div class="note"><span>ℹ️</span><span>Планы общие для всех устройств — сохранённое здесь видно всем сразу.</span></div>
     <div class="card"><h3>Планы менеджеров (месяц)</h3>${rows}</div>
@@ -1169,6 +1261,7 @@ function renderPlans(v){
 }
 function savePlans(){
   DB.config.managers.forEach(m=>{
+    if(FLAT_RATE_MANAGERS[m.id]!=null) return;
     const val=Number(document.getElementById('plan-'+m.id).value)||0;
     DB.plans[m.id]={monthPlan:val};
   });
