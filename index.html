@@ -1771,14 +1771,17 @@ function buildAmoEntries(){
       });
     });
   }
-  // Ручные записи: WhatsApp берём всегда (его в amoCRM нет), звонки — только если из амо не пришли
+  // Ручные записи: WhatsApp берём всегда (его в amoCRM нет), звонки — только если из амо не пришли.
+  // Продажи из ручного ввода НЕ берём (истина по деньгам — таблица) — КРОМЕ менеджеров без плана
+  // (Жамиля и т.п.), которых в таблице продаж вообще нет: для них ручной ввод — единственный источник.
   const manual=(SHARED ? Object.keys(SHARED).reduce((a,k)=>a.concat(SHARED[k]||[]),[]) : []).concat(DB.entries||[]);
   manual.forEach(e=>{
     if(!e || !e.managerId || !e.date) return;
-    if(!e.sipuni && !e.wa) return;
+    if(!e.sipuni && !e.wa && !e.sales) return;
     const t=entryFor(e.managerId,e.date);
     if(e.sipuni && !t.sipuni) t.sipuni=e.sipuni;
     if(e.wa) t.wa=e.wa;
+    if(FLAT_RATE_MANAGERS[e.managerId]!=null && e.sales && e.sales.length) t.sales=e.sales;
   });
   AMO_ENTRIES=Object.keys(byKey).map(k=>byKey[k]);
 }
